@@ -1,7 +1,34 @@
 import numpy as np
 import torch
+from torch.utils.data import Dataset
+from torchvision.io import read_image
+import torchvision.transforms as transforms
 
-def update_params(model, device, datasize, lr, epoch, weight_decay=0.0, alpha=0.9, temperature=1.0/50000):
+class ImageDataset(Dataset):
+    def __init__(self, df):
+        self.path = df.path.to_list()
+        self.label = df.label.to_list()
+        
+    def __len__(self):
+        return len(self.path)
+
+    def __getitem__(self, index):
+        image = read_image(self.path[index]).float()
+        return self.transform(image/255)[None,:,:,:], self.label[index]
+    
+    def transform(self, item):
+        transform = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261)),
+        ])
+        return transform(item)
+    
+def collate_fn(batch):
+    images, labels = zip(*batch)
+    images = torch.concat(images, dim=0)
+    return images, torch.Tensor(labels)
+
+def update_params(model, device, datasize, lr, epoch, weight_decay=5e-4, alpha=0.9, temperature=1.0/50000):
     for p in model.parameters():
         if not hasattr(p, 'buf'):
             p.buf = torch.zeros(p.size()).to(device)
@@ -36,14 +63,14 @@ class CosineAnnealingLR():
 #     lr = (lr_0) *(1 + math.cos(math.pi * rcounter / T)) / 2
 #     return lr
 
-def train(model, prior_params, device, criterion, lr_scheduler, dataloader, epoch):
-    print('\nEpoch: %d' % epoch)
+def train_one_epoch(model, prior_params, device, criterion, lr_scheduler, dataloader, epoch):
+    
     model.train()
-    train_loss = 0
-    correct = 0
-    total = 0
-    lrs = []
-    for batch_idx, (inputs, targets) in enumerate(dataloader):
+    
+    running_loss = 0.0
+    lrs = list()
+    
+    for batch_idx, (inputs, targets) in enumerate(dataloader):     
         
         if device.type == 'cuda':
             inputs, targets = inputs.to(device), targets.to(device)
@@ -57,40 +84,36 @@ def train(model, prior_params, device, criterion, lr_scheduler, dataloader, epoc
         metrices = criterion(outputs, targets.data, N=prior_params['mean'].shape[0], params=params)
         metrices['loss'].backward()
         update_params(model, device, len(dataloader.dataset), lr, epoch)
+        
+        running_loss += metrices['nll'].item()
 
-        train_loss += metrices['nll'].item()
-        _, predicted = torch.max(outputs.data, 1)
-        total += targets.size(0)
-        correct += predicted.eq(targets.data).cpu().sum()
-        if batch_idx%100==0: 
-            print('Loss: %.3f | Acc: %.3f%% (%d/%d)'
-                % (train_loss/(batch_idx+1), 100.*correct.item()/total, correct, total))
     return lrs
 
-def test(model, prior_params, device, criterion, dataloader):
+def evaluate(model, prior_params, device, criterion, dataloader):
+    
     model.eval()
-    test_loss = 0
-    correct = 0
-    total = 0
+    
+    running_loss = 0.0
+    target_list, output_list = list(), list()
+    
     params = torch.flatten(torch.cat([torch.flatten(p) for p in model.parameters()])) ## Flatten all the parms to one array
     params = params[:prior_params['mean'].shape[0]].cpu()
     with torch.no_grad():
         for batch_idx, (inputs, targets) in enumerate(dataloader):
+            
             if device.type == 'cuda':
                 inputs, targets = inputs.to(device), targets.to(device)
+                
             outputs = model(inputs)
             metrices = criterion(outputs, targets.data, N=prior_params['mean'].shape[0], params=params)
+            
+            if device.type == 'cuda':
+                targets, outputs = targets.cpu(), outputs.cpu()
+                
+            for output, target in zip(outputs.cpu(), targets):
+                target_list.append(target.numpy().astype(int))
+                output_list.append(output.numpy())
 
-            test_loss += metrices['nll'].item()
-            _, predicted = torch.max(outputs.data, 1)
-            total += targets.size(0)
-            correct += predicted.eq(targets.data).cpu().sum()
+            running_loss += metrices['nll'].item()
 
-            if batch_idx%100==0:
-                print('Test Loss: %.3f | Test Acc: %.3f%% (%d/%d)'
-                    % (test_loss/(batch_idx+1), 100.*correct.item()/total, correct, total))
-
-    print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.2f}%)\n'.format(
-    test_loss/len(dataloader), correct, total,
-    100. * correct.item() / total))
-    return test_loss/len(dataloader), correct.item() / total
+    return running_loss, target_list, output_list
