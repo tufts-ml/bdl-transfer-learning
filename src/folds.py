@@ -19,7 +19,6 @@ def create_folds(df, index_name='subject_id', random_state=42):
     numpy_labels = np.array([np.array(label) for label in grouped.label])
     unique_labels, counts = np.unique(numpy_labels, axis=0, return_counts=True)
     folds_for_each_label = [random_state.choice(np.tile(np.arange(10), count//10+1)[:count], count, replace=False) for count in counts]
-    
     fold_numbers = -1*np.ones(rows)
 
     for unique_label_index, unique_label in enumerate(unique_labels):

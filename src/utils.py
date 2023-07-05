@@ -4,30 +4,58 @@ import torch
 from torch.utils.data import Dataset
 from torchvision.io import read_image
 import torchvision.transforms as transforms
+import copy
+import re
 
 def makedir_if_not_exist(directory):
     if not os.path.exists(directory):
         os.makedirs(directory)
-
-class ImageDataset(Dataset):
-    def __init__(self, df, mu=(0.4914, 0.4822, 0.4465), sigma=(0.247, 0.243, 0.261)):
-        self.mu, self.sigma = mu, sigma
+        
+class ImageDataset2D(Dataset):
+    def __init__(self, df, mean_and_std=None):
         self.path = df.path.to_list()
         self.label = df.label.to_list()
-        
+        if mean_and_std == None: self.mean_and_std = self.calc_mean_and_std()
+        else: self.mean_and_std = mean_and_std
+        print(self.mean_and_std)
+
     def __len__(self):
         return len(self.path)
 
     def __getitem__(self, index):
         image = read_image(self.path[index]).float()
-        return self.transform(image/255)[None,:,:,:], self.label[index]
-    
-    def transform(self, item):
-        transform = transforms.Compose([
-            transforms.Resize((224, 224)),
-            transforms.Normalize(self.mu, self.sigma),
-        ])
-        return transform(item)
+        return self.transform(image, normalize=True)[None,:,:,:], self.label[index]
+
+    def calc_mean_and_std(self):
+        running_mean, running_std = torch.zeros(3), torch.zeros(3)
+        total_pixels = 0
+
+        for path in self.path:
+            image = read_image(path).float()
+            image = self.transform(image)
+            running_mean += torch.sum(image, dim=(1, 2))
+            total_pixels += image.shape[1] * image.shape[2]
+            
+        mean = running_mean/total_pixels
+
+        for path in self.path:
+            image = read_image(path).float()
+            image = self.transform(image)
+            running_std += torch.sum((image - mean[:,None,None]) ** 2, dim=(1, 2))
+        
+        std = torch.sqrt(running_std/total_pixels)
+        
+        return tuple(mean.tolist()), tuple(std.tolist())
+
+    def transform(self, item, normalize=False):
+        transform_list = [transforms.Lambda(lambda x: x/255.0),
+                          transforms.Resize((224, 224))]
+        
+        if normalize:
+            transform_list.append(transforms.Normalize(mean=self.mean_and_std[0], std=self.mean_and_std[1]))
+
+        transform = transforms.Compose(transform_list)
+        return transform(item) 
     
 def collate_fn(batch):
     images, labels = zip(*batch)
@@ -37,7 +65,7 @@ def collate_fn(batch):
 def to_categorical(y, num_classes):
     return np.eye(num_classes, dtype='uint8')[y]
 
-def update_params(model, device, datasize, lr, epoch, weight_decay=1e-5, alpha=0.9, temperature=1.0/50000):
+def update_params(model, device, datasize, lr, epoch, weight_decay, alpha, temperature):
     for p in model.parameters():
         if not hasattr(p, 'buf'):
             p.buf = torch.zeros(p.size()).to(device)
@@ -46,7 +74,7 @@ def update_params(model, device, datasize, lr, epoch, weight_decay=1e-5, alpha=0
         buf_new = (1-alpha)*p.buf - lr*d_p
         if (epoch%50)+1>45:
             eps = torch.randn(p.size()).to(device)
-            buf_new += (2.0*lr*alpha*temperature/datasize)**.5*eps
+            buf_new += (2.0*lr*alpha*temperature/datasize)**0.5*eps
         p.data.add_(buf_new)
         p.buf = buf_new
         
@@ -65,7 +93,7 @@ class CosineAnnealingLR():
         lr = 0.5 * cos_out * self.lr_0
         return lr
 
-def train_one_epoch(model, prior_params, device, criterion, lr_scheduler, dataloader, epoch):
+def train_one_epoch(model, prior_params, device, criterion, lr_scheduler, dataloader, epoch, ags):
     
     model.train()
     
@@ -85,7 +113,7 @@ def train_one_epoch(model, prior_params, device, criterion, lr_scheduler, datalo
         params = params[:prior_params['mean'].shape[0]].cpu()
         metrices = criterion(outputs, targets, N=prior_params['mean'].shape[0], params=params)
         metrices['loss'].backward()
-        update_params(model, device, len(dataloader.dataset), lr, epoch)
+        update_params(model, device, len(dataloader.dataset), lr, epoch, args.weight_decay, args.alpha, args.temperature)
         
         running_loss += metrices['nll'].item()
 
@@ -119,3 +147,20 @@ def evaluate(model, prior_params, device, criterion, dataloader):
             running_loss += metrices['nll'].item()
 
     return running_loss, target_list, output_list
+
+def bayesian_model_average(model, prior_params, device, criterion, dataloader, path):
+    
+    model = copy.deepcopy(model).to(device)
+    
+    outputs_list = list()
+
+    for file in os.listdir(path):
+        if not re.search('.pt$', file):
+            continue
+            
+        model.load_state_dict(torch.load(os.path.join(path, file)))
+        
+        loss, targets, outputs = evaluate(model, prior_params, device, criterion, dataloader)
+        outputs_list.append(outputs)
+        
+    return np.mean(outputs_list, axis=0)
