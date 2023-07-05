@@ -18,14 +18,12 @@ def create_folds(df, index_name='subject_id', random_state=42):
 
     numpy_labels = np.array([np.array(label) for label in grouped.label])
     unique_labels, counts = np.unique(numpy_labels, axis=0, return_counts=True)
-
-    # Unique folds for each subject_id evenly distributed across labels
-    unique_folds = [random_state.choice(10, count) for count in counts]
-
+    folds_for_each_label = [random_state.choice(np.tile(np.arange(10), count//10+1)[:count], count, replace=False) for count in counts]
+    
     fold_numbers = -1*np.ones(rows)
 
     for unique_label_index, unique_label in enumerate(unique_labels):
-            fold_numbers[np.all(numpy_labels == unique_label, axis=1)] = unique_folds[unique_label_index]
+            fold_numbers[np.all(numpy_labels == unique_label, axis=1)] = folds_for_each_label[unique_label_index]
 
     return df.index.map(dict(zip(grouped[index_name], fold_numbers))).astype(int)
 

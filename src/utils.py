@@ -1,11 +1,17 @@
+import os
 import numpy as np
 import torch
 from torch.utils.data import Dataset
 from torchvision.io import read_image
 import torchvision.transforms as transforms
 
+def makedir_if_not_exist(directory):
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+
 class ImageDataset(Dataset):
-    def __init__(self, df):
+    def __init__(self, df, mu=(0.4914, 0.4822, 0.4465), sigma=(0.247, 0.243, 0.261)):
+        self.mu, self.sigma = mu, sigma
         self.path = df.path.to_list()
         self.label = df.label.to_list()
         
@@ -19,16 +25,19 @@ class ImageDataset(Dataset):
     def transform(self, item):
         transform = transforms.Compose([
             transforms.Resize((224, 224)),
-            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261)),
+            transforms.Normalize(self.mu, self.sigma),
         ])
         return transform(item)
     
 def collate_fn(batch):
     images, labels = zip(*batch)
     images = torch.concat(images, dim=0)
-    return images, torch.Tensor(labels)
+    return images, torch.tensor(labels).squeeze()
 
-def update_params(model, device, datasize, lr, epoch, weight_decay=5e-4, alpha=0.9, temperature=1.0/50000):
+def to_categorical(y, num_classes):
+    return np.eye(num_classes, dtype='uint8')[y]
+
+def update_params(model, device, datasize, lr, epoch, weight_decay=1e-5, alpha=0.9, temperature=1.0/50000):
     for p in model.parameters():
         if not hasattr(p, 'buf'):
             p.buf = torch.zeros(p.size()).to(device)
@@ -56,13 +65,6 @@ class CosineAnnealingLR():
         lr = 0.5 * cos_out * self.lr_0
         return lr
 
-# ###Cosine Annealing LR
-# def adjust_learning_rate(epoch, batch_idx):
-#     #eta_min = 0
-#     rcounter = epoch*num_batch+batch_idx
-#     lr = (lr_0) *(1 + math.cos(math.pi * rcounter / T)) / 2
-#     return lr
-
 def train_one_epoch(model, prior_params, device, criterion, lr_scheduler, dataloader, epoch):
     
     model.train()
@@ -81,7 +83,7 @@ def train_one_epoch(model, prior_params, device, criterion, lr_scheduler, datalo
         outputs = model(inputs)
         params = torch.flatten(torch.cat([torch.flatten(p) for p in model.parameters()])) ## Flatten all the parms to one array
         params = params[:prior_params['mean'].shape[0]].cpu()
-        metrices = criterion(outputs, targets.data, N=prior_params['mean'].shape[0], params=params)
+        metrices = criterion(outputs, targets, N=prior_params['mean'].shape[0], params=params)
         metrices['loss'].backward()
         update_params(model, device, len(dataloader.dataset), lr, epoch)
         
@@ -105,7 +107,7 @@ def evaluate(model, prior_params, device, criterion, dataloader):
                 inputs, targets = inputs.to(device), targets.to(device)
                 
             outputs = model(inputs)
-            metrices = criterion(outputs, targets.data, N=prior_params['mean'].shape[0], params=params)
+            metrices = criterion(outputs, targets, N=prior_params['mean'].shape[0], params=params)
             
             if device.type == 'cuda':
                 targets, outputs = targets.cpu(), outputs.cpu()

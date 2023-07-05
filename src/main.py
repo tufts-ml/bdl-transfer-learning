@@ -1,23 +1,16 @@
-'''Train CIFAR10 with PyTorch.'''
 import argparse
 import os
 import ast
+import numpy as np
+import pandas as pd
 
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-import torch.nn.functional as F
-import torch.backends.cudnn as cudnn
 
 import torchvision
 import torchvision.transforms as transforms
-
-import math
 from torchvision.models import resnet50
-import pandas as pd
-from torch.autograd import Variable
-import numpy as np
-import random
 
 from evaluation_metrics import *
 from folds import *
@@ -39,16 +32,17 @@ if __name__=='__main__':
     parser.add_argument('--alpha', type=float, default=0.9,
                         help='1: SGLD; <1: SGHMC')
     parser.add_argument('--device_id',type = int, help = 'device id to use')
-    parser.add_argument('--seed', type=int, default=42,
-                        help='random seed')
+    parser.add_argument('--seed', type=int, default=42, help='random seed')
     parser.add_argument('--temperature', type=float, default=1./50000,
                         help='temperature (default: 1/dataset_size)')
 
     args = parser.parse_args()
     # Set torch random seed
     torch.manual_seed(args.seed)
+    # Create checkpoints directory
+    makedir_if_not_exist(args.checkpoints_dir)
 
-    # Load labesl.csv
+    # Load labels.csv
     df = pd.read_csv(os.path.join(args.data_dir, 'labels.csv'), index_col='lesion_id')
     df.label = df.label.apply(lambda string: ast.literal_eval(string))
     # Subsample data and create folds
@@ -62,54 +56,38 @@ if __name__=='__main__':
     test_dataset = ImageDataset(test_df)
     # Create dataloaders
     train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, collate_fn=collate_fn)
-    val_loader = DataLoader(val_dataset, batch_size=64, shuffle=True, collate_fn=collate_fn)
+    val_loader = DataLoader(val_dataset, batch_size=64, collate_fn=collate_fn)
     test_loader = DataLoader(test_dataset, batch_size=64, collate_fn=collate_fn)
     
-    # Model
-    print('==> Building model..')
-    print("Working with pretrained prior!")
-
-    path = '{}/resnet50_ssl_prior'.format(args.prior_dir)
-    checkpoint = torch.load(path+'_model.pt', map_location=torch.device('cpu'))
-
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    print(device)
+    
+    # Load model
+    checkpoint = torch.load('{}/resnet50_ssl_prior_model.pt'.format(args.prior_dir), map_location=torch.device('cpu'))
     model = resnet50() # Define model
     model.fc = torch.nn.Identity() # Get the classification head off
     model.load_state_dict(checkpoint) # Load the pretrained backbone weights
-    num_labels = np.array(train_df.label.to_list()).shape[-1]
-    model.fc = torch.nn.Linear(in_features=2048, out_features=num_labels, bias=True) # Put the proper classification head back
-
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    print(device)
-
+    num_classes = len(np.unique(train_df.label.to_list()))
+    model.fc = torch.nn.Linear(in_features=2048, out_features=num_classes, bias=True) # Put the proper classification head back
     model.to(device)
-    if device.type == 'cuda':
-        cudnn.benchmark = True
-        cudnn.deterministic = True
+    
+    # Load prior parameters
+    mean = torch.load('{}/resnet50_ssl_prior_mean.pt'.format(args.prior_dir))
+    variance = torch.load('{}/resnet50_ssl_prior_variance.pt'.format(args.prior_dir))
+    cov_factor = torch.load('{}/resnet50_ssl_prior_covmat.pt'.format(args.prior_dir))
+    prior_scale = 1e10 # Default from "pretrain your loss"
+    prior_eps = 1e-1 # Default from "pretrain your loss"
+    variance = prior_scale * variance + prior_eps # Scale the variance
 
-    #### Load prior parameters
-    print("Loading prior parameters")
-    mean = torch.load(path + '_mean.pt')
-    variance = torch.load(path + '_variance.pt')
-    cov_factor = torch.load(path + '_covmat.pt')
-    print("Loaded")
-    print("Parameter space dimension:", mean.shape)
-    prior_scale = 1e10 # default from "pretrain your loss"
-    prior_eps = 1e-1 # default from "pretrain your loss"
-    ### scale the variance
-    variance = prior_scale * variance + prior_eps
-
-    number_of_samples_prior = 5 # default from "pretrain your loss"
-    ### scale the low rank covariance
-    cov_mat_sqrt = prior_scale * (cov_factor[:number_of_samples_prior])
+    number_of_samples_prior = 5 # Default from "pretrain your loss"
+    cov_mat_sqrt = prior_scale * (cov_factor[:number_of_samples_prior]) # Scale the low rank covariance
     prior_params = {'mean': mean.cpu(), 'variance': variance.cpu(), 'cov_mat_sqr': cov_mat_sqrt.cpu()}
 
-    weight_decay = 5e-4
+    weight_decay = 1e-5
     datasize = len(train_loader.dataset)
     num_batch = datasize/args.batch_size+1
-    T = args.epochs*num_batch # total number of iterations
-    M = 4 # number of cycles
-    lr_0 = 0.5 # initial lr
-    lr_scheduler = CosineAnnealingLR(num_batch, T, M, lr_0)
+    T = args.epochs*num_batch # Total number of iterations
+    lr_scheduler = CosineAnnealingLR(num_batch, T, M=4, lr_0=0.5)
     criterion = GaussianPriorCELossShifted(prior_params)
 
     columns = ['epoch', 'train_loss', 'train_BA', 'train_auroc', 'val_loss', 
@@ -125,10 +103,13 @@ if __name__=='__main__':
         val_loss, val_targets, val_outputs = evaluate(model, prior_params, device, criterion, val_loader)
         test_loss, test_targets, test_outputs = evaluate(model, prior_params, device, criterion, test_loader)
         
+        print(np.array(train_targets).shape)
+        print(np.array(train_outputs).shape)
+        
         # Calculate AUROCs
-        train_auroc = get_auroc(train_targets, train_outputs)
-        val_auroc = get_auroc(val_targets, val_outputs)
-        test_auroc = get_auroc(test_targets, test_outputs)
+        train_auroc = get_auroc(np.eye(num_classes)[train_targets], train_outputs)
+        val_auroc = get_auroc(np.eye(num_classes)[val_targets], val_outputs)
+        test_auroc = get_auroc(np.eye(num_classes)[test_targets], test_outputs)
         
         # Append evaluation metrics to DataFrame
         row = [epoch+1, train_loss, train_auroc, val_loss, val_auroc, test_loss, test_auroc, lrs]

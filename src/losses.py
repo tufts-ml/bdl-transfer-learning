@@ -14,7 +14,7 @@ class GaussianPriorCELossShifted(nn.Module):
         # Computes the Gaussian prior log-density.
         self.mvn = LowRankMultivariateNormal(means, cov_mat_sqr.t(), variance)
         self.constant = constant
-        self.ce = nn.BCEWithLogitsLoss()
+        self.ce = nn.CrossEntropyLoss()
     
     def log_prob(self, params):
         return self.mvn.log_prob(params)
