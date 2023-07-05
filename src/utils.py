@@ -17,7 +17,6 @@ class ImageDataset2D(Dataset):
         self.label = df.label.to_list()
         if mean_and_std == None: self.mean_and_std = self.calc_mean_and_std()
         else: self.mean_and_std = mean_and_std
-        print(self.mean_and_std)
 
     def __len__(self):
         return len(self.path)
@@ -115,7 +114,7 @@ def train_one_epoch(model, prior_params, device, criterion, lr_scheduler, datalo
         metrices['loss'].backward()
         update_params(model, device, len(dataloader.dataset), lr, epoch, args.weight_decay, args.alpha, args.temperature)
         
-        running_loss += metrices['nll'].item()
+        running_loss += (len(inputs)/len(dataloader.dataset))*metrices['nll'].item()
 
     return lrs
 
@@ -144,7 +143,7 @@ def evaluate(model, prior_params, device, criterion, dataloader):
                 target_list.append(target.numpy().astype(int))
                 output_list.append(output.numpy())
 
-            running_loss += metrices['nll'].item()
+            running_loss += (len(inputs)/len(dataloader.dataset))*metrices['nll'].item()
 
     return running_loss, target_list, output_list
 
@@ -168,4 +167,4 @@ def bayesian_model_average(model, prior_params, device, criterion, dataloader, p
         loss, targets, outputs = evaluate(model, prior_params, device, criterion, dataloader)
         outputs_list.append(outputs)
         
-    return np.mean(outputs_list, axis=0)
+    return outputs_list if len(outputs_list) == 1 else np.mean(outputs_list, axis=0)

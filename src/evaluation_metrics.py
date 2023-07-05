@@ -22,7 +22,6 @@ def get_balanced_accuracy(labels, predictions, thresholds=None, return_threshold
     specificity = np.where(TN+FP != 0, TN/(TN+FP), 0)
     return (0.5 * (sensitivity + specificity)) if return_thresholds is False else (thresholds, 0.5 * (sensitivity + specificity))
 
-
 def get_auroc(labels, predictions):
     labels = np.array(labels)
     predictions = np.array(predictions)

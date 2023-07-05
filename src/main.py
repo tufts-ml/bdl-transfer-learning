@@ -17,7 +17,7 @@ from folds import *
 from losses import *
 from utils import *
 
-# python bdl-transfer-learning/src/main.py --checkpoints_dir='/cluster/home/eharve06/bdl-transfer-learning/checkpoints' --prior_dir='/cluster/home/eharve06/resnet50_ssl_prior'
+# python bdl-transfer-learning/src/main.py --checkpoints_dir='/cluster/home/eharve06/bdl-transfer-learning/checkpoints' --prior_dir='/cluster/home/eharve06/resnet50_ssl_prior' --lr_0=0.1
 
 if __name__=='__main__':
     parser = argparse.ArgumentParser(description='main.py')
@@ -26,6 +26,7 @@ if __name__=='__main__':
     parser.add_argument('--checkpoints_dir', type=str, default=None, required=True, help='directory to save checkpoints (default: None)')
     parser.add_argument('--data_dir', type=str, default='/cluster/tufts/hugheslab/eharve06/HAM10000', help='directory to dataset (default: "/cluster/tufts/hugheslab/eharve06/HAM10000")')
     parser.add_argument('--epochs', type=int, default=200, help='number of epochs to train (default: 200)')
+    parser.add_argument('--lr_0', type=float, default=0.5, help='number of epochs to train (default: 0.5)')
     parser.add_argument('--prior_dir', type=str, default=None, required=True, help='directory to saved priors (default: None)')
     parser.add_argument('--seed', type=int, default=42, help='random seed (default: 42)')
     parser.add_argument('--temperature', type=float, default=1.0/50000, help='temperature (default: 1/dataset_size)')
@@ -81,7 +82,7 @@ if __name__=='__main__':
     datasize = len(train_loader.dataset)
     num_batch = datasize/args.batch_size+1
     T = args.epochs*num_batch # Total number of iterations
-    lr_scheduler = CosineAnnealingLR(num_batch, T, M=4, lr_0=0.5)
+    lr_scheduler = CosineAnnealingLR(num_batch, T, M=4, lr_0=args.lr_0)
     criterion = GaussianPriorCELossShifted(prior_params)
 
     columns = ['epoch', 'train_loss', 'train_auroc', 'train_bma_auroc', 
@@ -120,9 +121,9 @@ if __name__=='__main__':
                 torch.save(model.state_dict(), '{}/model_epoch={}.pt'.format(args.checkpoints_dir, epoch))
                 model.to(device)
         else:
-            train_bma_auroc = [0.0]*num_classes if epoch == 0 else model_history_df.loc[epoch-1].train_bma_auroc
-            val_bma_auroc = [0.0]*num_classes if epoch == 0 else model_history_df.loc[epoch-1].val_bma_auroc
-            test_bma_auroc = [0.0]*num_classes if epoch == 0 else model_history_df.loc[epoch-1].test_bma_auroc
+            train_bma_auroc = np.zeros(num_classes) if epoch == 0 else model_history_df.loc[epoch-1].train_bma_auroc
+            val_bma_auroc = np.zeros(num_classes) if epoch == 0 else model_history_df.loc[epoch-1].val_bma_auroc
+            test_bma_auroc = np.zeros(num_classes) if epoch == 0 else model_history_df.loc[epoch-1].test_bma_auroc
             
         # Append evaluation metrics to DataFrame
         row = [epoch+1, train_loss, train_auroc, train_bma_auroc, val_loss, 
