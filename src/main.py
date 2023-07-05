@@ -51,7 +51,8 @@ if __name__=='__main__':
     val_dataset = ImageDataset2D(val_df, train_dataset.mean_and_std)
     test_dataset = ImageDataset2D(test_df, train_dataset.mean_and_std)
     # Create dataloaders
-    train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, collate_fn=collate_fn)
+    train_loader_shuffled = DataLoader(train_dataset, batch_size=64, shuffle=True, collate_fn=collate_fn)
+    train_loader = DataLoader(train_dataset, batch_size=64, collate_fn=collate_fn)
     val_loader = DataLoader(val_dataset, batch_size=64, collate_fn=collate_fn)
     test_loader = DataLoader(test_dataset, batch_size=64, collate_fn=collate_fn)
     
@@ -92,7 +93,7 @@ if __name__=='__main__':
     
     for epoch in range(args.epochs):
         
-        lrs = train_one_epoch(model, prior_params, device, criterion, lr_scheduler, train_loader, epoch, args)
+        lrs = train_one_epoch(model, prior_params, device, criterion, lr_scheduler, train_loader_shuffled, epoch, args)
         
         train_loss, train_targets, train_outputs = evaluate(model, prior_params, device, criterion, train_loader)
         val_loss, val_targets, val_outputs = evaluate(model, prior_params, device, criterion, val_loader)
@@ -108,6 +109,7 @@ if __name__=='__main__':
             train_bma_outputs = bayesian_model_average(model, prior_params, device, criterion, train_loader, args.checkpoints_dir)
             val_bma_outputs = bayesian_model_average(model, prior_params, device, criterion, val_loader, args.checkpoints_dir)
             test_bma_outputs = bayesian_model_average(model, prior_params, device, criterion, test_loader, args.checkpoints_dir)
+            print(np.array(train_bma_outputs).shape)
             
             # Calculate Bayesian model average AUROCs
             train_bma_auroc = get_auroc(to_categorical(train_targets, num_classes), train_bma_outputs)

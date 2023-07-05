@@ -167,4 +167,4 @@ def bayesian_model_average(model, prior_params, device, criterion, dataloader, p
         loss, targets, outputs = evaluate(model, prior_params, device, criterion, dataloader)
         outputs_list.append(outputs)
         
-    return outputs_list if len(outputs_list) == 1 else np.mean(outputs_list, axis=0)
+    return np.mean(outputs_list, axis=0)
