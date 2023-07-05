@@ -93,7 +93,7 @@ class CosineAnnealingLR():
         lr = 0.5 * cos_out * self.lr_0
         return lr
 
-def train_one_epoch(model, prior_params, device, criterion, lr_scheduler, dataloader, epoch, ags):
+def train_one_epoch(model, prior_params, device, criterion, lr_scheduler, dataloader, epoch, args):
     
     model.train()
     
@@ -150,10 +150,15 @@ def evaluate(model, prior_params, device, criterion, dataloader):
 
 def bayesian_model_average(model, prior_params, device, criterion, dataloader, path):
     
-    model = copy.deepcopy(model).to(device)
-    
     outputs_list = list()
 
+    # Append outputs from current model
+    loss, targets, outputs = evaluate(model, prior_params, device, criterion, dataloader)
+    outputs_list.append(outputs)
+    
+    # Append outputs from previous models
+    model = copy.deepcopy(model).to(device)
+    
     for file in os.listdir(path):
         if not re.search('.pt$', file):
             continue

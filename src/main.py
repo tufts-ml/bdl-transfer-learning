@@ -107,14 +107,14 @@ if __name__=='__main__':
             train_bma_outputs = bayesian_model_average(model, prior_params, device, criterion, train_loader, args.checkpoints_dir)
             val_bma_outputs = bayesian_model_average(model, prior_params, device, criterion, val_loader, args.checkpoints_dir)
             test_bma_outputs = bayesian_model_average(model, prior_params, device, criterion, test_loader, args.checkpoints_dir)
-
+            
             # Calculate Bayesian model average AUROCs
             train_bma_auroc = get_auroc(to_categorical(train_targets, num_classes), train_bma_outputs)
             val_bma_auroc = get_auroc(to_categorical(val_targets, num_classes), val_bma_outputs)
             test_bma_auroc = get_auroc(to_categorical(test_targets, num_classes), test_bma_outputs)
             
             # Save 5 models per cycle
-            if np.mean(model_history_df.loc[epoch-1].val_bma_auroc) < np.mean(model_history_df.loc[epoch].val_bma_auroc):
+            if np.mean(model_history_df.loc[epoch-1].val_bma_auroc) < np.mean(val_bma_auroc):
                 print('Saving model_epoch={}.pt'.format(epoch))
                 model.cpu()
                 torch.save(model.state_dict(), '{}/model_epoch={}.pt'.format(args.checkpoints_dir, epoch))
