@@ -64,34 +64,6 @@ def collate_fn(batch):
 def to_categorical(y, num_classes):
     return np.eye(num_classes, dtype='uint8')[y]
 
-class CosineAnnealingLR():    
-    def __init__(self, num_batch, T, M=4, lr_0=0.5):
-        self.num_batch = num_batch # total number of iterations
-        self.T = T # total number of iterations
-        self.lr_0 = lr_0 # initial lr
-        self.M = M # number of cycles
-
-    def adjust_learning_rate(self, epoch, batch_idx):
-        rcounter = epoch*self.num_batch + batch_idx
-        cos_inner = np.pi * (rcounter % (self.T // self.M))
-        cos_inner /= self.T // self.M
-        cos_out = np.cos(cos_inner) + 1
-        lr = 0.5 * cos_out * self.lr_0
-        return lr
-
-def update_params(model, device, datasize, lr, epoch, weight_decay, alpha, temperature):
-    for p in model.parameters():
-        if not hasattr(p, 'buf'):
-            p.buf = torch.zeros(p.size()).to(device)
-        d_p = p.grad.data
-        d_p.add_(p.data, alpha=weight_decay)
-        buf_new = (1-alpha)*p.buf - lr*d_p
-        if (epoch%50)+1>45:
-            eps = torch.randn(p.size()).to(device)
-            buf_new += (2.0*lr*alpha*temperature/datasize)**0.5*eps
-        p.data.add_(buf_new)
-        p.buf = buf_new
-
 def train_one_epoch(model, prior_params, criterion, optimizer, scheduler, dataloader, device):
     
     model.train()
