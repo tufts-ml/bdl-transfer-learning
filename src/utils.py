@@ -141,7 +141,7 @@ def bayesian_model_average(model, prior_params, criterion, dataloader, device, p
     outputs_list = list()
 
     # Append outputs from current model
-    loss, targets, outputs = evaluate(model, prior_params, device, criterion, dataloader)
+    loss, targets, outputs = evaluate(model, prior_params, criterion, dataloader, device)
     outputs_list.append(outputs)
     
     # Append outputs from previous models
@@ -153,7 +153,7 @@ def bayesian_model_average(model, prior_params, criterion, dataloader, device, p
             
         model.load_state_dict(torch.load(os.path.join(path, file)))
         
-        loss, targets, outputs = evaluate(model, prior_params, device, criterion, dataloader)
+        loss, targets, outputs = evaluate(model, prior_params, criterion, dataloader, device)
         outputs_list.append(outputs)
         
     return np.mean(outputs_list, axis=0)

@@ -32,6 +32,8 @@ if __name__=='__main__':
     parser.add_argument('--seed', type=int, default=42, help='random seed (default: 42)')
     parser.add_argument('--temperature', type=float, default=1.0/50000, help='temperature (default: 1/dataset_size)')
     parser.add_argument('--weight_decay', type=float, default=5e-4, help='weight_decay (default: 5e-4)')
+    parser.add_argument('--prior_scale', type=float, default=1e10, help='scaling factor fir the prior (default: 1e10)')
+    parser.add_argument('--prior_num_terms', type=float, default=5, help='number of low-rank covariance terms of the prior (default: 5)')
 
     args = parser.parse_args()
     # Set torch random seed
@@ -73,10 +75,10 @@ if __name__=='__main__':
     mean = torch.load('{}/resnet50_ssl_prior_mean.pt'.format(args.prior_dir))
     variance = torch.load('{}/resnet50_ssl_prior_variance.pt'.format(args.prior_dir))
     cov_factor = torch.load('{}/resnet50_ssl_prior_covmat.pt'.format(args.prior_dir))
-    prior_scale = 1e10 # Default from "pretrain your loss"
+    prior_scale = args.prior_scale # Default from "pretrain your loss"
     prior_eps = 1e-1 # Default from "pretrain your loss"
     variance = prior_scale * variance + prior_eps # Scale the variance
-    number_of_samples_prior = 5 # Default from "pretrain your loss"
+    number_of_samples_prior = args.prior_num_terms # Default from "pretrain your loss"
     cov_mat_sqrt = prior_scale * (cov_factor[:number_of_samples_prior]) # Scale the low rank covariance
     prior_params = {'mean': mean.cpu(), 'variance': variance.cpu(), 'cov_mat_sqr': cov_mat_sqrt.cpu()}
 
@@ -84,7 +86,9 @@ if __name__=='__main__':
     T = args.epochs*num_batch # Total number of iterations
     criterion = GaussianPriorCELossShifted(prior_params)
     optimizer = SGHMC(model.parameters(), args.batch_size, len(train_loader_shuffled.dataset), device,args.alpha, args.lr_0, args.temperature, args.weight_decay)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=T)
+    #scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=T)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=int(T/4), T_mult=1)
+    #scheduler = CosineAnnealingLR(num_batch, T, M=4, lr_0=args.lr_0) ## added MP
 
     columns = ['epoch', 'train_loss', 'train_auroc', 'train_bma_auroc', 
                'val_loss', 'val_auroc', 'val_bma_auroc', 'test_loss', 
