@@ -14,6 +14,7 @@ from torchvision.models import resnet50
 
 from evaluation_metrics import *
 from folds import *
+from optimizers import *
 from losses import *
 from utils import *
 
@@ -31,6 +32,8 @@ if __name__=='__main__':
     parser.add_argument('--seed', type=int, default=42, help='random seed (default: 42)')
     parser.add_argument('--temperature', type=float, default=1.0/50000, help='temperature (default: 1/dataset_size)')
     parser.add_argument('--weight_decay', type=float, default=5e-4, help='weight_decay (default: 5e-4)')
+    parser.add_argument('--prior_scale', type=float, default=1e10, help='scaling factor fir the prior (default: 1e10)')
+    parser.add_argument('--prior_num_terms', type=float, default=5, help='number of low-rank covariance terms of the prior (default: 5)')
 
     args = parser.parse_args()
     # Set torch random seed
@@ -72,19 +75,20 @@ if __name__=='__main__':
     mean = torch.load('{}/resnet50_ssl_prior_mean.pt'.format(args.prior_dir))
     variance = torch.load('{}/resnet50_ssl_prior_variance.pt'.format(args.prior_dir))
     cov_factor = torch.load('{}/resnet50_ssl_prior_covmat.pt'.format(args.prior_dir))
-    prior_scale = 1e10 # Default from "pretrain your loss"
+    prior_scale = args.prior_scale # Default from "pretrain your loss"
     prior_eps = 1e-1 # Default from "pretrain your loss"
     variance = prior_scale * variance + prior_eps # Scale the variance
-
-    number_of_samples_prior = 5 # Default from "pretrain your loss"
+    number_of_samples_prior = args.prior_num_terms # Default from "pretrain your loss"
     cov_mat_sqrt = prior_scale * (cov_factor[:number_of_samples_prior]) # Scale the low rank covariance
     prior_params = {'mean': mean.cpu(), 'variance': variance.cpu(), 'cov_mat_sqr': cov_mat_sqrt.cpu()}
 
-    datasize = len(train_loader.dataset)
-    num_batch = datasize/args.batch_size+1
+    num_batch = math.ceil(len(train_loader.dataset)/args.batch_size)
     T = args.epochs*num_batch # Total number of iterations
-    lr_scheduler = CosineAnnealingLR(num_batch, T, M=4, lr_0=args.lr_0)
     criterion = GaussianPriorCELossShifted(prior_params)
+    optimizer = SGHMC(model.parameters(), args.batch_size, len(train_loader_shuffled.dataset), device,args.alpha, args.lr_0, args.temperature, args.weight_decay)
+    #scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=T)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=int(T/4), T_mult=1)
+    #scheduler = CosineAnnealingLR(num_batch, T, M=4, lr_0=args.lr_0) ## added MP
 
     columns = ['epoch', 'train_loss', 'train_auroc', 'train_bma_auroc', 
                'val_loss', 'val_auroc', 'val_bma_auroc', 'test_loss', 
@@ -93,11 +97,11 @@ if __name__=='__main__':
     
     for epoch in range(args.epochs):
         
-        lrs = train_one_epoch(model, prior_params, device, criterion, lr_scheduler, train_loader_shuffled, epoch, args)
+        lrs = train_one_epoch(model, prior_params, criterion, optimizer, scheduler, train_loader_shuffled, device)
         
-        train_loss, train_targets, train_outputs = evaluate(model, prior_params, device, criterion, train_loader)
-        val_loss, val_targets, val_outputs = evaluate(model, prior_params, device, criterion, val_loader)
-        test_loss, test_targets, test_outputs = evaluate(model, prior_params, device, criterion, test_loader)
+        train_loss, train_targets, train_outputs = evaluate(model, prior_params, criterion, train_loader, device)
+        val_loss, val_targets, val_outputs = evaluate(model, prior_params, criterion, val_loader, device)
+        test_loss, test_targets, test_outputs = evaluate(model, prior_params, criterion, test_loader, device)
         
         # Calculate AUROCs
         train_auroc = get_auroc(to_categorical(train_targets, num_classes), train_outputs)
@@ -106,10 +110,9 @@ if __name__=='__main__':
         
         if (epoch%50)+1>45:
             # Bayesian model average
-            train_bma_outputs = bayesian_model_average(model, prior_params, device, criterion, train_loader, args.checkpoints_dir)
-            val_bma_outputs = bayesian_model_average(model, prior_params, device, criterion, val_loader, args.checkpoints_dir)
-            test_bma_outputs = bayesian_model_average(model, prior_params, device, criterion, test_loader, args.checkpoints_dir)
-            print(np.array(train_bma_outputs).shape)
+            train_bma_outputs = bayesian_model_average(model, prior_params, criterion, train_loader, device, args.checkpoints_dir)
+            val_bma_outputs = bayesian_model_average(model, prior_params, criterion, val_loader, device, args.checkpoints_dir)
+            test_bma_outputs = bayesian_model_average(model, prior_params, criterion, test_loader, device, args.checkpoints_dir)
             
             # Calculate Bayesian model average AUROCs
             train_bma_auroc = get_auroc(to_categorical(train_targets, num_classes), train_bma_outputs)
@@ -117,7 +120,7 @@ if __name__=='__main__':
             test_bma_auroc = get_auroc(to_categorical(test_targets, num_classes), test_bma_outputs)
             
             # Save 5 models per cycle
-            if np.mean(model_history_df.loc[epoch-1].val_bma_auroc) < np.mean(val_bma_auroc):
+            if np.mean(val_bma_auroc) > np.mean(model_history_df.loc[epoch-1].val_bma_auroc):
                 print('Saving model_epoch={}.pt'.format(epoch))
                 model.cpu()
                 torch.save(model.state_dict(), '{}/model_epoch={}.pt'.format(args.checkpoints_dir, epoch))
