@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH -n 1
-#SBATCH -p ccgpu
+#SBATCH -p gpu
 #SBATCH -t 48:00:00
 #SBATCH --gres=gpu:a100:1
 #SBATCH --mem=64g

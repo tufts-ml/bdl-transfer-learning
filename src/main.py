@@ -63,10 +63,10 @@ if __name__=='__main__':
     test_images, test_labels = zip(*[test_dataset[i] for i in range(len(test_dataset))])
     test_dataset = TensorDataset(torch.stack(test_images), torch.Tensor(test_labels).long())
     # Create dataloaders
-    train_loader_shuffled = DataLoader(train_dataset, batch_size=len(train_dataset), shuffle=True, drop_last=True, collate_fn=utils.collate_fn)
-    train_loader = DataLoader(train_dataset, batch_size=len(train_dataset), collate_fn=utils.collate_fn)
-    val_loader = DataLoader(val_dataset, batch_size=len(val_dataset), collate_fn=utils.collate_fn)
-    test_loader = DataLoader(test_dataset, batch_size=len(test_dataset), collate_fn=utils.collate_fn)
+    train_loader_shuffled = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, collate_fn=utils.collate_fn)
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, collate_fn=utils.collate_fn)
+    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, collate_fn=utils.collate_fn)
+    test_loader = DataLoader(test_dataset, batch_size=args.batch_size, collate_fn=utils.collate_fn)
     
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print(device)
