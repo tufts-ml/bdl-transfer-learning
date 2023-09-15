@@ -6,7 +6,7 @@
 #SBATCH --mem=64g
 #SBATCH -o /cluster/tufts/hugheslab/eharve06/slurmlog/out/log_%j.out # Write stdout to file named log_JOBIDNUM.out in log dir
 #SBATCH -e /cluster/tufts/hugheslab/eharve06/slurmlog/err/log_%j.err # Write stderr to file named log_JOBIDNUM.err in log dir
-#SBATCH --array=0-119%8
+#SBATCH --array=0-23%8
 
 source ~/.bashrc
 conda activate bdl_2022f_env
