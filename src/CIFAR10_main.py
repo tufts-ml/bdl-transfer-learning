@@ -16,7 +16,6 @@ if __name__=='__main__':
     parser = argparse.ArgumentParser(description='main.py')    
     parser.add_argument('--batch_size', default=128, help='Batch size (default: 128)', type=int)
     parser.add_argument('--dataset_path', help='Path to CIFAR10', required=True, type=str)
-    parser.add_argument('--epochs', type=int, default=1000, help='Number of epochs to train (default: 1000)')
     parser.add_argument('--experiments_path', help='Path to save experiments', required=True, type=str)
     parser.add_argument('--learned_prior', action='store_true', default=False, help='Whether or not to use learned prior (default: False)')
     parser.add_argument('--lr_0', default=0.5, help='Initial learning rate (default: 0.5)', type=float)
@@ -38,7 +37,7 @@ if __name__=='__main__':
     # Create sampled CIFAR10 datasets
     train_dataset, val_dataset, test_dataset = utils.get_cifar10_datasets(args.dataset_path, args.n, args.random_state)
     # Create dataloaders
-    train_loader_shuffled = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True)
+    train_loader_shuffled = torch.utils.data.DataLoader(train_dataset, batch_size=min(args.batch_size, len(train_dataset)), shuffle=True, drop_last=True)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size)
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=args.batch_size)
@@ -56,7 +55,6 @@ if __name__=='__main__':
             'batch_size': args.batch_size,
             'dataset_path': args.dataset_path,
             'device': device,
-            'epochs': args.epochs,
             'experiments_path': args.experiments_path,
             'learned_prior': args.learned_prior,
             'lr_0': args.lr_0,
@@ -99,16 +97,18 @@ if __name__=='__main__':
     else:
         criterion = losses.CustomCELoss(ce)
  
-    num_batch = len(train_loader)
-    T = args.epochs*num_batch # Total number of iterations
-    optimizer = torch.optim.SGD(model.parameters(), lr=args.lr_0, 
-                                momentum=0.9, weight_decay=args.weight_decay, nesterov=True)
+    steps = int(30000/5) # 30,000 steps 5 chains
+    epochs = int(steps*min(args.batch_size, len(train_dataset))/len(train_dataset))
+    print(epochs)
+    number_of_batches = len(train_loader)
+    T = epochs*number_of_batches # Total number of iterations
+    optimizer = torch.optim.SGD(model.parameters(), lr=args.lr_0, momentum=0.9, weight_decay=args.weight_decay, nesterov=True)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=T)
 
     columns = ['epoch', 'test_acc', 'test_loss', 'test_nll', 'test_prior', 'train_acc', 'train_loss', 'train_nll', 'train_prior', 'val_acc', 'val_loss', 'val_nll', 'val_prior']
     model_history_df = pd.DataFrame(columns=columns)
     
-    for epoch in range(args.epochs):
+    for epoch in range(epochs):
         
         lrs = utils.train_one_epoch(model, prior_params, criterion, optimizer, scheduler, train_loader_shuffled)
         
