@@ -19,6 +19,8 @@ class ImageDataset2D(Dataset):
         self.transform_images = transform_images
         if mean_and_std == None: self.mean_and_std = self.calc_mean_and_std()
         else: self.mean_and_std = mean_and_std
+        #if self.transform_images: self.image = [self.transform(read_image(path).float(), normalize=True) for path in self.path]
+        #else: self.image = [read_image(path).float() for path in self.path]
 
     def __len__(self):
         return len(self.path)
@@ -27,6 +29,7 @@ class ImageDataset2D(Dataset):
         image = read_image(self.path[index]).float()
         if self.transform_images: image = self.transform(image, normalize=True)
         return image[None, :, :, :], self.label[index]
+        #return self.image[index][None, :, :, :], self.label[index]
 
     def calc_mean_and_std(self):
         c, w, h = read_image(self.path[0]).float().shape # Gets number of channels from first image
