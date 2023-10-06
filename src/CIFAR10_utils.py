@@ -6,6 +6,7 @@ import torchvision
 import torchmetrics
 
 def makedir_if_not_exist(directory):
+    
     if not os.path.exists(directory):
         os.makedirs(directory)
 
@@ -22,7 +23,7 @@ class CIFAR10(torch.utils.data.Dataset):
     def __getitem__(self, index):
         return (self.transform(self.X[index]), self.y[index]) if self.transform else (self.X[index], self.y[index])
 
-def get_cifar10_datasets(root, n, random_state=42):
+def get_cifar10_datasets(root, n, tune=True, random_state=42):
     
     if random_state is None:
         random_state = np.random
@@ -34,29 +35,32 @@ def get_cifar10_datasets(root, n, random_state=42):
     # Load CIFAR-10 datasets
     cifar10_train_dataset = torchvision.datasets.CIFAR10(root=root, train=True, download=True)
     cifar10_test_dataset = torchvision.datasets.CIFAR10(root=root, train=False, download=True)
-    # Sample train and validation datasets from CIFAR-10 training dataset
-    random_indices = random_state.choice(np.arange(len(cifar10_train_dataset)), n, replace=False)
-    train_indices = random_indices[:int(4/5*n)] # Use 4/5 of training_samples for training
-    val_indices = random_indices[int(4/5*n):] # Use 1/5 of training_samples for validation
-    # Use entire CIFAR-10 testing dataset
-    test_indices = range(len(cifar10_test_dataset))
-    # Sample CIFAR10 training and validation datasets
-    sampled_train_dataset = [cifar10_train_dataset[index] for index in train_indices]
-    sampled_val_dataset = [cifar10_train_dataset[index] for index in val_indices]
+    # Sample int(n/10) datapoints per class from CIFAR-10 training dataset
+    class_indices = {cifar10_label: [idx for idx, (image, label) in enumerate(cifar10_train_dataset) if label == cifar10_label] for cifar10_label in range(10)}
+    sampled_class_indices = np.array([random_state.choice(indices, int(n/10), replace=False) for label, indices in class_indices.items()]).flatten()
+    shuffled_sampled_class_indices = random_state.choice(sampled_class_indices, len(sampled_class_indices), replace=False)
+    if tune:
+        train_indices = shuffled_sampled_class_indices[:int(4/5*n)]
+        val_or_test_indices = shuffled_sampled_class_indices[int(4/5*n):]
+        val_or_test_dataset = [cifar10_train_dataset[index] for index in val_or_test_indices]
+    else:
+        train_indices = shuffled_sampled_class_indices
+        val_or_test_dataset = cifar10_test_dataset
     # Get channel mean and std from training data
+    sampled_train_dataset = [cifar10_train_dataset[index] for index in train_indices]
     to_tensor = torchvision.transforms.Compose([
         torchvision.transforms.ToTensor()
     ])
     sampled_train_images = torch.stack([to_tensor(image) for image, label in sampled_train_dataset])
-    train_mean = torch.mean(sampled_train_images, axis=(0,2,3))
-    train_std = torch.std(sampled_train_images, axis=(0,2,3))
+    train_mean = torch.mean(sampled_train_images, axis=(0, 2, 3))
+    train_std = torch.std(sampled_train_images, axis=(0, 2, 3))
     train_transform = torchvision.transforms.Compose([
         torchvision.transforms.Normalize(mean=train_mean, std=train_std),
         torchvision.transforms.Resize(size=(256, 256)),
         torchvision.transforms.RandomCrop(size=(244, 244)),
         torchvision.transforms.RandomHorizontalFlip(),
     ])
-    test_transform = torchvision.transforms.Compose([
+    val_or_test_transform = torchvision.transforms.Compose([
         torchvision.transforms.Normalize(mean=train_mean, std=train_std),
         torchvision.transforms.Resize(size=(256, 256)),
         torchvision.transforms.CenterCrop(size=(244, 244)),
@@ -64,15 +68,12 @@ def get_cifar10_datasets(root, n, random_state=42):
     # Load X and y for each dataset
     sampled_train_images = torch.stack([to_tensor(image) for image, label in sampled_train_dataset])
     sampled_train_labels = torch.tensor([label for image, label in sampled_train_dataset])
-    sampled_val_images = torch.stack([to_tensor(image) for image, label in sampled_val_dataset])
-    sampled_val_labels = torch.tensor([label for image, label in sampled_val_dataset])
-    test_images = torch.stack([to_tensor(image) for image, label in cifar10_test_dataset])
-    test_labels = torch.tensor([label for image, label in cifar10_test_dataset])
+    sampled_val_or_test_images = torch.stack([to_tensor(image) for image, label in val_or_test_dataset])
+    sampled_val_or_test_labels = torch.tensor([label for image, label in val_or_test_dataset])
     # Create CIFAR10 datasets
     train_dataset = CIFAR10(sampled_train_images, sampled_train_labels, train_transform)
-    val_dataset = CIFAR10(sampled_val_images, sampled_val_labels, test_transform)
-    test_dataset = CIFAR10(test_images, test_labels, test_transform)
-    return train_dataset, val_dataset, test_dataset
+    val_or_test_dataset = CIFAR10(sampled_val_or_test_images, sampled_val_or_test_labels, val_or_test_transform)
+    return train_dataset, val_or_test_dataset
 
 def train_one_epoch(model, prior_params, criterion, optimizer, scheduler, dataloader):
     
@@ -102,10 +103,10 @@ def evaluate(model, prior_params, criterion, dataloader):
     
     device = torch.device('cuda:0' if next(model.parameters()).is_cuda else 'cpu')
     #auc = torchmetrics.Accuracy(task='multiclass', num_classes=model.fc.out_features, average='macro')
-    auc = torchmetrics.Accuracy(task='multiclass', num_classes=10, average='macro')
+    acc = torchmetrics.Accuracy(task='multiclass', num_classes=10, average='macro')
     model.eval()
     
-    running_loss, running_nll, running_prior, running_auc = 0.0, 0.0, 0.0, 0.0
+    running_loss, running_nll, running_prior, running_acc = 0.0, 0.0, 0.0, 0.0
     
     params = torch.flatten(torch.cat([torch.flatten(p) for p in model.parameters()]))
     params = params[:prior_params['mean'].shape[0]].cpu()
@@ -122,6 +123,6 @@ def evaluate(model, prior_params, criterion, dataloader):
             running_loss += len(inputs)/len(dataloader.dataset)*metrices['loss'].item()
             running_nll += len(inputs)/len(dataloader.dataset)*metrices['nll'].item()
             running_prior += len(inputs)/len(dataloader.dataset)*metrices['prior'].item()
-            running_auc += len(inputs)/len(dataloader.dataset)*auc(torch.softmax(outputs, dim=1).detach().cpu(), targets.detach().cpu()).item()
+            running_acc += len(inputs)/len(dataloader.dataset)*acc(torch.softmax(outputs, dim=1).detach().cpu(), targets.detach().cpu()).item()
 
-    return running_loss, running_nll, running_prior, running_auc
+    return running_loss, running_nll, running_prior, running_acc

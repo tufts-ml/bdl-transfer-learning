@@ -25,6 +25,7 @@ if __name__=='__main__':
     parser.add_argument('--prior_path', help='Path to saved priors', required=True, type=str)
     parser.add_argument('--prior_scale', default=1e10, help='Scaling factor for the prior (default: 1e10)', type=float)
     parser.add_argument('--random_state', default=42, help='Random state (default: 42)', type=int)
+    parser.add_argument('--tune', action='store_true', default=False, help='Whether validation or test set is used (default: False)')
     parser.add_argument('--wandb', action='store_true', default=False, help='Whether or not to log to wandb')
     parser.add_argument('--weight_decay', type=float, default=5e-4, help='Weight decay (default: 5e-4)')
 
@@ -35,21 +36,21 @@ if __name__=='__main__':
     # Create checkpoints directory
     utils.makedir_if_not_exist(args.experiments_path)
     # Create sampled CIFAR10 datasets
-    train_dataset, val_dataset, test_dataset = utils.get_cifar10_datasets(args.dataset_path, args.n, args.random_state)
+    train_dataset, val_or_test_dataset = utils.get_cifar10_datasets(args.dataset_path, args.n, args.random_state)
     # Create dataloaders
     train_loader_shuffled = torch.utils.data.DataLoader(train_dataset, batch_size=min(args.batch_size, len(train_dataset)), shuffle=True, drop_last=True)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size)
-    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size)
-    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=args.batch_size)
+    val_or_test_loader = torch.utils.data.DataLoader(val_or_test_dataset, batch_size=args.batch_size)
     
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     
     if args.wandb:
+        wandb_project = 'tune_CIFAR-10' if args.tune else 'retrained_CIFAR-10'
         wandb_name = '{}'.format(args.model_name)
         wandb.login()
         os.environ['WANDB_API_KEY'] = '4bfaad8bea054341b5e8729c940150221bdfbb6c'
         run = wandb.init(
-        project = 'CIFAR-10',
+        project = wandb_project,
         name = wandb_name,
         config={
             'batch_size': args.batch_size,
@@ -64,6 +65,7 @@ if __name__=='__main__':
             'prior_path': args.prior_path,
             'prior_scale': args.prior_scale,
             'random_state': args.random_state,
+            'tune': args.tune,
             'wandb': args.wandb,
             'weight_decay': args.weight_decay,
         })
@@ -99,43 +101,45 @@ if __name__=='__main__':
  
     steps = int(30000/5) # 30,000 steps 5 chains
     epochs = int(steps*min(args.batch_size, len(train_dataset))/len(train_dataset))
-    print(epochs)
     number_of_batches = len(train_loader)
     T = epochs*number_of_batches # Total number of iterations
     optimizer = torch.optim.SGD(model.parameters(), lr=args.lr_0, momentum=0.9, weight_decay=args.weight_decay, nesterov=True)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=T)
 
-    columns = ['epoch', 'test_acc', 'test_loss', 'test_nll', 'test_prior', 'train_acc', 'train_loss', 'train_nll', 'train_prior', 'val_acc', 'val_loss', 'val_nll', 'val_prior']
+    columns = ['epoch', 'train_acc', 'train_loss', 'train_nll', 'train_prior', 'val_or_test_loss', 'val_or_test_nll', 'val_or_test_prior', 'val_or_test_auroc']
     model_history_df = pd.DataFrame(columns=columns)
     
     for epoch in range(epochs):
         
         lrs = utils.train_one_epoch(model, prior_params, criterion, optimizer, scheduler, train_loader_shuffled)
         
-        train_loss, train_nll, train_prior, train_auroc = utils.evaluate(model, prior_params, criterion, train_loader)
-        val_loss, val_nll, val_prior, val_auroc = utils.evaluate(model, prior_params, criterion, val_loader)
-        test_loss, test_nll, test_prior, test_auroc = utils.evaluate(model, prior_params, criterion, test_loader)
-                    
+        train_loss, train_nll, train_prior, train_acc = utils.evaluate(model, prior_params, criterion, train_loader)
+        
+        if args.tune:
+            # Validation
+            val_or_test_loss, val_or_test_nll, val_or_test_prior, val_or_test_acc = utils.evaluate(model, prior_params, criterion, val_or_test_loader)
+        elif not tune and epoch == epochs-1:
+            # Test
+            val_or_test_loss, val_or_test_nll, val_or_test_prior, val_or_test_acc = utils.evaluate(model, prior_params, criterion, val_or_test_loader)
+        else:
+            val_or_test_loss, val_or_test_nll, val_or_test_prior, val_or_test_acc = 0.0, 0.0, 0.0, 0.0
+                            
         # Append evaluation metrics to DataFrame
-        row = [epoch, test_auroc, test_loss, test_nll, test_prior, train_auroc, train_loss, train_nll, train_prior, val_auroc, val_loss, val_nll, val_prior]
+        row = [epoch, train_acc, train_loss, train_nll, train_prior, val_or_test_acc, val_or_test_loss, val_or_test_nll, val_or_test_prior]
         model_history_df.loc[epoch] = row
         print(model_history_df.iloc[epoch])
         
-        if args.wandb == True:
+        if args.wandb:
             wandb.log({
                 'epoch': epoch, 
-                'test_acc': test_auroc, 
-                'test_loss': test_loss, 
-                'test_nll': test_nll, 
-                'test_prior': test_prior,
-                'train_acc': train_auroc, 
+                'train_acc': train_acc, 
                 'train_loss': train_loss, 
                 'train_nll': train_nll, 
                 'train_prior': train_prior,
-                'val_acc': val_auroc, 
-                'val_loss': val_loss, 
-                'val_nll': val_nll, 
-                'val_prior': val_prior,
+                'val_or_test_acc': val_or_test_acc, 
+                'val_or_test_loss': val_or_test_loss, 
+                'val_or_test_nll': val_or_test_nll, 
+                'val_or_test_prior': val_or_test_prior,
             })
         
         model_path = os.path.join(args.experiments_path, '{}.csv'.format(args.model_name))
