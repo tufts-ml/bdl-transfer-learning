@@ -36,7 +36,7 @@ if __name__=='__main__':
     # Create checkpoints directory
     utils.makedir_if_not_exist(args.experiments_path)
     # Create sampled CIFAR10 datasets
-    train_dataset, val_or_test_dataset = utils.get_cifar10_datasets(args.dataset_path, args.n, args.random_state)
+    train_dataset, val_or_test_dataset = utils.get_cifar10_datasets(root=args.dataset_path, n=args.n, tune=args.tune, random_state=args.random_state)
     # Create dataloaders
     train_loader_shuffled = torch.utils.data.DataLoader(train_dataset, batch_size=min(args.batch_size, len(train_dataset)), shuffle=True, drop_last=True)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size)
@@ -45,7 +45,7 @@ if __name__=='__main__':
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     
     if args.wandb:
-        wandb_project = 'tune_CIFAR-10' if args.tune else 'retrained_CIFAR-10'
+        wandb_project = 'tuned_CIFAR-10' if args.tune else 'retrained_CIFAR-10'
         wandb_name = '{}'.format(args.model_name)
         wandb.login()
         os.environ['WANDB_API_KEY'] = '4bfaad8bea054341b5e8729c940150221bdfbb6c'
@@ -106,7 +106,7 @@ if __name__=='__main__':
     optimizer = torch.optim.SGD(model.parameters(), lr=args.lr_0, momentum=0.9, weight_decay=args.weight_decay, nesterov=True)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=T)
 
-    columns = ['epoch', 'train_acc', 'train_loss', 'train_nll', 'train_prior', 'val_or_test_loss', 'val_or_test_nll', 'val_or_test_prior', 'val_or_test_auroc']
+    columns = ['epoch', 'train_acc', 'train_loss', 'train_nll', 'train_prior', 'val_or_test_acc', 'val_or_test_loss', 'val_or_test_nll', 'val_or_test_prior']
     model_history_df = pd.DataFrame(columns=columns)
     
     for epoch in range(epochs):
@@ -118,7 +118,7 @@ if __name__=='__main__':
         if args.tune:
             # Validation
             val_or_test_loss, val_or_test_nll, val_or_test_prior, val_or_test_acc = utils.evaluate(model, prior_params, criterion, val_or_test_loader)
-        elif not tune and epoch == epochs-1:
+        elif not args.tune and epoch == epochs-1:
             # Test
             val_or_test_loss, val_or_test_nll, val_or_test_prior, val_or_test_acc = utils.evaluate(model, prior_params, criterion, val_or_test_loader)
         else:
