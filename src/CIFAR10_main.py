@@ -22,6 +22,7 @@ if __name__=='__main__':
     parser.add_argument('--model_name', help='Name for the model file', required=True, type=str)
     parser.add_argument('--n', default=1000, help='Number of training samples (default: 1000)', type=int)
     parser.add_argument('--number_of_samples_prior', default=5, help='Number of low-rank covariance terms of the prior (default: 5)', type=float)
+    parser.add_argument('--prior_eps', default=1e-1, help='Added to prior variance (default: 1e-1)', type=float) # Default from "Pre-Train Your Loss"
     parser.add_argument('--prior_path', help='Path to saved priors', required=True, type=str)
     parser.add_argument('--prior_scale', default=1e10, help='Scaling factor for the prior (default: 1e10)', type=float)
     parser.add_argument('--random_state', default=42, help='Random state (default: 42)', type=int)
@@ -86,8 +87,7 @@ if __name__=='__main__':
         mean = torch.load('{}/resnet50_ssl_prior_mean.pt'.format(args.prior_path))
         variance = torch.load('{}/resnet50_ssl_prior_variance.pt'.format(args.prior_path))
         cov_factor = torch.load('{}/resnet50_ssl_prior_covmat.pt'.format(args.prior_path))
-        prior_eps = 1e-1 # Default from "Pre-Train Your Loss"
-        variance = args.prior_scale * variance + prior_eps # Scale the variance
+        variance = args.prior_scale * variance + args.prior_eps # Scale the variance
         cov_mat_sqrt = args.prior_scale * (cov_factor[:args.number_of_samples_prior]) # Scale the low rank covariance
         prior_params = {'mean': mean.cpu(), 'variance': variance.cpu(), 'cov_mat_sqr': cov_mat_sqrt.cpu()}
     else:
@@ -144,3 +144,6 @@ if __name__=='__main__':
         
         model_path = os.path.join(args.experiments_path, '{}.csv'.format(args.model_name))
         model_history_df.to_csv(model_path)
+        
+    model_path = os.path.join(args.experiments_path, '{}.pth'.format(args.model_name))
+    torch.save(model.state_dict(), model_path)

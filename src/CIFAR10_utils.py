@@ -23,7 +23,7 @@ class CIFAR10(torch.utils.data.Dataset):
     def __getitem__(self, index):
         return (self.transform(self.X[index]), self.y[index]) if self.transform else (self.X[index], self.y[index])
 
-def get_cifar10_datasets(root, n, tune=True, random_state=42):
+def get_cifar10_datasets(root, n, tune=True, random_state=42, use_train_transform=True):
     
     if random_state is None:
         random_state = np.random
@@ -71,7 +71,10 @@ def get_cifar10_datasets(root, n, tune=True, random_state=42):
     sampled_val_or_test_images = torch.stack([to_tensor(image) for image, label in val_or_test_dataset])
     sampled_val_or_test_labels = torch.tensor([label for image, label in val_or_test_dataset])
     # Create CIFAR10 datasets
-    train_dataset = CIFAR10(sampled_train_images, sampled_train_labels, train_transform)
+    if use_train_transform:
+        train_dataset = CIFAR10(sampled_train_images, sampled_train_labels, train_transform)
+    else:
+        train_dataset = CIFAR10(sampled_train_images, sampled_train_labels, val_or_test_transform)
     val_or_test_dataset = CIFAR10(sampled_val_or_test_images, sampled_val_or_test_labels, val_or_test_transform)
     return train_dataset, val_or_test_dataset
 
