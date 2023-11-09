@@ -1,0 +1,74 @@
+wandb_version: 1
+
+batch_size:
+  desc: null
+  value: 128
+dataset_path:
+  desc: null
+  value: /cluster/tufts/hugheslab/eharve06/CIFAR-10
+device:
+  desc: null
+  value: cuda:0
+experiments_path:
+  desc: null
+  value: /cluster/tufts/hugheslab/eharve06/bdl-transfer-learning/experiments/tuned_CIFAR-10
+learned_prior:
+  desc: null
+  value: true
+lr_0:
+  desc: null
+  value: 0.01
+model_name:
+  desc: null
+  value: test
+n:
+  desc: null
+  value: 1000
+number_of_samples_prior:
+  desc: null
+  value: 5
+prior_path:
+  desc: null
+  value: /cluster/tufts/hugheslab/eharve06
+prior_scale:
+  desc: null
+  value: 100000.0
+random_state:
+  desc: null
+  value: 2001
+tune:
+  desc: null
+  value: false
+wandb:
+  desc: null
+  value: true
+weight_decay:
+  desc: null
+  value: 1.0e-05
+_wandb:
+  desc: null
+  value:
+    python_version: 3.8.18
+    cli_version: 0.15.11
+    framework: torch
+    is_jupyter_run: false
+    is_kaggle_kernel: false
+    start_time: 1698433637.964978
+    t:
+      1:
+      - 1
+      - 41
+      - 55
+      2:
+      - 1
+      - 41
+      - 55
+      3:
+      - 13
+      - 16
+      - 23
+      4: 3.8.18
+      5: 0.15.11
+      8:
+      - 5
+      13: linux-x86_64

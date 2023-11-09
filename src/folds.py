@@ -26,16 +26,14 @@ def create_folds(df, index_name='subject_id', random_state=42):
 
     return df.index.map(dict(zip(grouped[index_name], fold_numbers))).astype(int)
 
-def split_folds(df, train_indices=[0, 1, 2, 3, 4, 5], val_indices=[6, 7, 8], test_indices=[9]):
+def split_folds(df, train_indices=[0, 1, 2, 3, 4, 5, 6, 7], val_or_test_indices=[8, 9]):
     
     assert 'Fold' in df.columns, 'DataFrame is missing Fold column'
     
     train_df = df[df.Fold.isin(train_indices)].copy()
-    val_df = df[df.Fold.isin(val_indices)].copy()
-    test_df = df[df.Fold.isin(test_indices)].copy()
+    val_or_test_df = df[df.Fold.isin(val_or_test_indices)].copy()
     
     train_df.reset_index(drop=True, inplace=True)
-    val_df.reset_index(drop=True, inplace=True)
-    test_df.reset_index(drop=True, inplace=True)
+    val_or_test_df.reset_index(drop=True, inplace=True)
 
-    return train_df, val_df, test_df
+    return train_df, val_or_test_df

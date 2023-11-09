@@ -1,0 +1,1 @@
+{"epoch": 12, "train_acc": 0.9380727853775024, "train_loss": 34645.7554375, "train_nll": 0.1845645421743393, "train_prior": -34645.57031250001, "val_or_test_acc": 0.0, "val_or_test_loss": 0.0, "val_or_test_nll": 0.0, "val_or_test_prior": 0.0, "_timestamp": 1698436263.019094, "_runtime": 236.1997890472412, "_step": 12, "_wandb": {"runtime": 248}}

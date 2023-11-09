@@ -3,37 +3,46 @@ import torch
 import torch.nn as nn
 
 class CustomCELoss(nn.Module):
-    """Wrapper for CrossEntropy that accepts N and params in forward function"""
-
     def __init__(self, ce):
         super().__init__()
         self.ce = ce
+        self.number_of_params = 0
 
-    def forward(self, logits, Y, N=None, params=None):
-        nll = self.ce(logits, Y)
-        matrices = {'loss': nll, 'nll': nll, 'prior': torch.Tensor([0])}
+    def forward(self, logits, targets, N=None, params=None):
+        nll = self.ce(logits, targets)
+        matrices = {'loss': nll, 'nll': nll, 'prior': torch.tensor(0.0)}
         return matrices
 
-class GaussianPriorCELossShifted(nn.Module):
-    """Scaled CrossEntropy + Gaussian prior"""
-
-    def __init__(self, ce, params):
+class GaussianPriorCELossShifted(nn.Module):    
+    def __init__(self, ce, loc, cov_factor, cov_diag):
         super().__init__()
         self.ce = ce
-        means = params['mean']
-        variance = params['variance']
-        cov_mat_sqr = params['cov_mat_sqr']
-        # Computes the Gaussian prior log-density
-        self.mvn = LowRankMultivariateNormal(means, cov_mat_sqr.t(), variance)
+        self.number_of_params = loc.shape[0]
+        self.mvn = LowRankMultivariateNormal(loc=loc, cov_factor=cov_factor, cov_diag=cov_diag)
     
     def log_prob(self, params):
         return self.mvn.log_prob(params)
 
-    def forward(self, logits, Y, N, params):
-        nll = self.ce(logits, Y)
+    def forward(self, logits, targets, N, params):
+        nll = self.ce(logits, targets)
         log_prior_value = self.log_prob(params).sum() / N
         log_prior_value = torch.clamp(log_prior_value, min=-1e20, max=1e20)
-
         ne_en = nll - log_prior_value # Negative energy
         matrices = {'loss': ne_en, 'nll': nll, 'prior': log_prior_value}
+        return matrices
+    
+class MAPAdaptionCELoss(nn.Module):
+    def __init__(self, ce, loc, weight_decay):
+        super().__init__()
+        self.ce = ce
+        self.loc = loc
+        self.number_of_params = loc.shape[0]
+        self.weight_decay = weight_decay
+
+    def forward(self, logits, targets, N, params):
+        nll = self.ce(logits, targets)
+        regularizer = self.weight_decay * torch.norm(params - self.loc)**2
+        regularizer = torch.clamp(regularizer, min=-1e20, max=1e20)
+        loss = nll + regularizer
+        matrices = {'loss': loss, 'nll': nll, 'prior': regularizer}
         return matrices
