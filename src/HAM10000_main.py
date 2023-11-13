@@ -87,8 +87,8 @@ if __name__=='__main__':
         optimizer = torch.optim.SGD(model.parameters(), lr=args.lr_0, momentum=0.9, weight_decay=args.weight_decay, nesterov=True)
     elif args.prior_type == 'adapted':
         loc = torch.load('{}/resnet50_ssl_prior_mean.pt'.format(args.prior_path))
-        loc = torch.cat((loc, torch.zeros(10)))
-        criterion = losses.MAPAdaptionCELoss(ce, loc.cpu(), args.weight_decay)
+        loc = torch.cat((loc, torch.zeros(num_heads)))
+        criterion = losses.MAPAdaptationCELoss(ce, loc.cpu(), args.weight_decay)
         optimizer = torch.optim.SGD(model.parameters(), lr=args.lr_0, momentum=0.9, weight_decay=0.0, nesterov=True)
     elif args.prior_type == 'learned':
         loc = torch.load('{}/resnet50_ssl_prior_mean.pt'.format(args.prior_path))
@@ -98,6 +98,9 @@ if __name__=='__main__':
         cov_diag = args.prior_scale * cov_diag + args.prior_eps # Scale the variance
         criterion = losses.GaussianPriorCELossShifted(ce, loc.cpu(), cov_factor.t().cpu(), cov_diag.cpu())
         optimizer = torch.optim.SGD(model.parameters(), lr=args.lr_0, momentum=0.9, weight_decay=args.weight_decay, nesterov=True)
+        #params_without_decay = [{'params': name, 'weight_decay': 0.0} for name, param in model.named_parameters() if 'fc' not in name]
+        #params_with_decay = [{'params': model.fc.parameters(), 'weight_decay': args.weight_decay}]
+        #optimizer = torch.optim.SGD(params_without_decay+params_with_decay, lr=args.lr_0, momentum=0.9, nesterov=True)
     else:
         raise NotImplementedError('The specified prior type \'{}\' is not implemented.'.format(args.prior_type))
         
@@ -113,11 +116,11 @@ if __name__=='__main__':
     for epoch in range(epochs):
         
         lrs = utils.train_one_epoch(model, criterion, optimizer, scheduler, train_loader_shuffled)
-        train_loss, train_nll, train_prior, train_acc = utils.evaluate(model, criterion, train_loader, 'auroc', 4)
+        train_loss, train_nll, train_prior, train_acc = utils.evaluate(model, criterion, train_loader, 'auroc', num_heads)
         
         if args.tune or (not args.tune and epoch == epochs-1):
             # Validation or test
-            val_or_test_loss, val_or_test_nll, val_or_test_prior, val_or_test_acc = utils.evaluate(model, criterion, val_or_test_loader, 'auroc', 4)
+            val_or_test_loss, val_or_test_nll, val_or_test_prior, val_or_test_acc = utils.evaluate(model, criterion, val_or_test_loader, 'auroc', num_heads)
         else:
             val_or_test_loss, val_or_test_nll, val_or_test_prior, val_or_test_acc = 0.0, 0.0, 0.0, 0.0
                             

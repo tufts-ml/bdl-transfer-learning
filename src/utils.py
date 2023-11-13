@@ -19,22 +19,23 @@ def makedir_if_not_exist(directory):
         os.makedirs(directory)
 
 def get_ham10000_datasets(root, n, tune=True, random_state=42):
-    # Load labels.csv
-    df = pd.read_csv(os.path.join(root, 'labels.csv'), index_col='lesion_id')
-    df.label = df.label.apply(lambda string: ast.literal_eval(string))
-    # Create folds
-    df['Fold'] = folds.create_folds(df, index_name='lesion_id', random_state=random_state)
-    # Split folds
-    train_df, test_df = folds.split_folds(df)
-    train_df = train_df.sample(n=n, random_state=random_state)
-    train_df['Fold'] = folds.create_folds(train_df, index_name='lesion_id', random_state=random_state)
-    train_df, val_df = folds.split_folds(train_df)
+    # Load HAM10000 datasets (see HAM10000.ipynb to create labels.csv)
+    ham10000_train_df = pd.read_csv(os.path.join(root, 'train/labels.csv'), index_col='lesion_id')
+    ham10000_test_df = pd.read_csv(os.path.join(root, 'test/labels.csv'), index_col='lesion_id')
+    ham10000_train_df.label = ham10000_train_df.label.apply(lambda item: ast.literal_eval(item))
+    ham10000_test_df.label = ham10000_test_df.label.apply(lambda item: ast.literal_eval(item))
+    # Randomly sample n datapoints from HAM10000 training DataFrame
+    sampled_ham10000_train_df = ham10000_train_df.sample(n=n, random_state=random_state)
     if tune:
-        val_or_test_df = val_df
+        # Create folds
+        sampled_ham10000_train_df['Fold'] = folds.create_folds(sampled_ham10000_train_df, index_name='lesion_id', random_state=random_state)
+        # Split folds
+        train_df, val_or_test_df = folds.split_folds(sampled_ham10000_train_df)
     else:
-        val_or_test_df = test_df
+        train_df = sampled_ham10000_train_df
+        val_or_test_df = ham10000_test_df
     to_tensor = torchvision.transforms.Compose([
-        torchvision.transforms.Lambda(lambda x: x/255)
+        torchvision.transforms.Lambda(lambda item: item/255),
     ])
     sampled_train_images = torch.stack([to_tensor(read_image(path).float()) for path in train_df.path])
     train_mean = torch.mean(sampled_train_images, axis=(0, 2, 3))
@@ -51,11 +52,11 @@ def get_ham10000_datasets(root, n, tune=True, random_state=42):
         torchvision.transforms.CenterCrop(size=(224, 224)),
     ])
     sampled_train_images = torch.stack([to_tensor(read_image(path).float()) for path in train_df.path])
-    sampled_train_labels = torch.tensor([label for label in train_df.label])
+    sampled_train_labels = torch.tensor([label for label in train_df.label]).squeeze()
     sampled_val_or_test_images = torch.stack([to_tensor(read_image(path).float()) for path in val_or_test_df.path])
-    sampled_val_or_test_labels = torch.tensor([label for label in val_or_test_df.label])
-    # Create CIFAR10 datasets
-    augmented_train_dataset = CIFAR10(sampled_train_images, sampled_train_labels, None)
+    sampled_val_or_test_labels = torch.tensor([label for label in val_or_test_df.label]).squeeze()
+    # Create HAM10000 datasets
+    augmented_train_dataset = CIFAR10(sampled_train_images, sampled_train_labels, train_transform)
     train_dataset = CIFAR10(sampled_train_images, sampled_train_labels, val_or_test_transform)
     val_or_test_dataset = CIFAR10(sampled_val_or_test_images, sampled_val_or_test_labels, val_or_test_transform)
     return augmented_train_dataset, train_dataset, val_or_test_dataset

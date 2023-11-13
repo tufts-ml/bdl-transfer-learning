@@ -31,7 +31,7 @@ class GaussianPriorCELossShifted(nn.Module):
         matrices = {'loss': ne_en, 'nll': nll, 'prior': log_prior_value}
         return matrices
     
-class MAPAdaptionCELoss(nn.Module):
+class MAPAdaptationCELoss(nn.Module):
     def __init__(self, ce, loc, weight_decay):
         super().__init__()
         self.ce = ce
