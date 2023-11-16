@@ -11,12 +11,59 @@ import torchvision
 from torchvision.io import read_image
 import torchvision.transforms as transforms
 import torchmetrics
+from torchvision.transforms import v2
 # Importing our custom module(s)
 import folds
 
 def makedir_if_not_exist(directory):
     if not os.path.exists(directory):
         os.makedirs(directory)
+
+def get_oxford_pets_datasets(root, n, tune=True, random_state=42):
+    if not os.path.exists(os.path.join(root, 'annotations/')):
+      URL = "https://www.robots.ox.ac.uk/~vgg/data/pets/data/annotations.tar.gz"
+      download_and_extract_archive(URL, root)
+    if not os.path.exists(os.path.join(root, 'images/')):
+      URL = "https://www.robots.ox.ac.uk/~vgg/data/pets/data/images.tar.gz"
+      download_and_extract_archive(URL, root)
+    # Read annotations into dataframes 
+    df_trainval = pd.read_csv(os.path.join(root, 'annotations/trainval.txt'),sep=' ',names=['image','id','species','breed_id'])
+    n = int(n/df_trainval.id.max()) # number of images per class
+    df_test = pd.read_csv(os.path.join(root, 'annotations/test.txt'),sep=' ',names=['image','id','species','breed_id'])
+    # Add file paths to dataframe 
+    df_trainval['path'] = df_trainval['image'].apply(lambda image: os.path.join(root, 'images/{}.jpg'.format(image)))
+    df_test['path'] = df_test['image'].apply(lambda image: os.path.join(root, 'images/{}.jpg'.format(image)))
+    if tune:
+      df_train_sampled = df_trainval.groupby('id').apply(lambda x: x.sample(n=n, random_state=random_state_int)[:int(4/5*n)]).reset_index(drop = True)
+      df_val_or_test_sampled = df_trainval.groupby('id').apply(lambda x: x.sample(n=n, random_state=random_state_int)[int(4/5*n):]).reset_index(drop = True)
+    else:
+      df_train_sampled = df_trainval.groupby('id').apply(lambda x: x.sample(n=n, random_state=random_state_int)[:int(4/5*n)]).reset_index(drop = True)
+      df_val_or_test_sampled = df_test
+    
+    # For Oxford Pets we resize images before taking normalizing since images are different sizes
+    transform = v2.Resize(size=(256,256))
+    sampled_train_images = torch.stack([transform(read_image(path).float() / 255) for path in df_train_sampled.path])
+    sampled_train_labels = torch.tensor([label for label in df_train_sampled.id]).squeeze()
+    train_mean = torch.mean(sampled_train_images, axis=(0, 2, 3))
+    train_std = torch.std(sampled_train_images, axis=(0, 2, 3))
+    sampled_val_or_test_images = torch.stack([transform(read_image(path).float() / 255) for path in df_val_or_test_sampled.path])
+    sampled_val_or_test_labels = torch.tensor([label for label in df_val_or_test_sampled.id]).squeeze()
+
+    train_transform = torchvision.transforms.Compose([
+        torchvision.transforms.Normalize(mean=train_mean, std=train_std),
+        torchvision.transforms.RandomCrop(size=(224, 224)),
+        torchvision.transforms.RandomHorizontalFlip(),
+    ])
+    val_or_test_transform = torchvision.transforms.Compose([
+        torchvision.transforms.Normalize(mean=train_mean, std=train_std),
+        torchvision.transforms.CenterCrop(size=(224, 224)),
+    ])
+
+    # Create Oxford Pets datasets
+    augmented_train_dataset = CIFAR10(sampled_train_images, sampled_train_labels, train_transform)
+    train_dataset = CIFAR10(sampled_train_images, sampled_train_labels, val_or_test_transform)
+    val_or_test_dataset = CIFAR10(sampled_val_or_test_images, sampled_val_or_test_labels, val_or_test_transform)
+    return augmented_train_dataset, train_dataset, val_or_test_dataset
 
 def get_ham10000_datasets(root, n, tune=True, random_state=42):
     # Load HAM10000 datasets (see HAM10000.ipynb to create labels.csv)
