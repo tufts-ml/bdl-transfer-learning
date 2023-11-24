@@ -11,7 +11,7 @@ import torchvision
 from torchvision.io import read_image
 import torchvision.transforms as transforms
 import torchmetrics
-from torchvision.transforms import v2
+from torchvision.datasets.utils import download_and_extract_archive
 # Importing our custom module(s)
 import folds
 
@@ -34,20 +34,34 @@ def get_oxford_pets_datasets(root, n, tune=True, random_state=42):
     df_trainval['path'] = df_trainval['image'].apply(lambda image: os.path.join(root, 'images/{}.jpg'.format(image)))
     df_test['path'] = df_test['image'].apply(lambda image: os.path.join(root, 'images/{}.jpg'.format(image)))
     if tune:
-      df_train_sampled = df_trainval.groupby('id').apply(lambda x: x.sample(n=n, random_state=random_state_int)[:int(4/5*n)]).reset_index(drop = True)
-      df_val_or_test_sampled = df_trainval.groupby('id').apply(lambda x: x.sample(n=n, random_state=random_state_int)[int(4/5*n):]).reset_index(drop = True)
+      df_train_sampled = df_trainval.groupby('id').apply(lambda x: x.sample(n=n, random_state=random_state)[:int(4/5*n)]).reset_index(drop = True)
+      df_val_or_test_sampled = df_trainval.groupby('id').apply(lambda x: x.sample(n=n, random_state=random_state)[int(4/5*n):]).reset_index(drop = True)
     else:
-      df_train_sampled = df_trainval.groupby('id').apply(lambda x: x.sample(n=n, random_state=random_state_int)[:int(4/5*n)]).reset_index(drop = True)
+      df_train_sampled = df_trainval.groupby('id').apply(lambda x: x.sample(n=n, random_state=random_state)[:int(4/5*n)]).reset_index(drop = True)
       df_val_or_test_sampled = df_test
     
     # For Oxford Pets we resize images before taking normalizing since images are different sizes
-    transform = v2.Resize(size=(256,256))
-    sampled_train_images = torch.stack([transform(read_image(path).float() / 255) for path in df_train_sampled.path])
-    sampled_train_labels = torch.tensor([label for label in df_train_sampled.id]).squeeze()
+    transform = transforms.Resize(size=(256,256))
+    # Some of the images have 4 channels RGBA. We ignore the last channel.
+    imgs_train = []
+    for path in df_train_sampled.path:
+        temp = transform(read_image(path).float()) / 255
+        temp = temp[:3,:,:] if temp.shape[0] == 4 else temp
+        imgs_train.append(temp)
+    sampled_train_images = torch.stack(imgs_train)
+    imgs_val_or_test = []
+    for path in df_val_or_test_sampled.path:
+        temp = transform(read_image(path).float()) / 255
+        temp = temp[:3,:,:] if temp.shape[0] == 4 else temp
+        imgs_val_or_test.append(temp)
+    sampled_val_or_test_images = torch.stack(imgs_val_or_test)
+    
+    #sampled_train_images = torch.stack([transform(read_image(path).float() / 255) for path in df_train_sampled.path])
+    sampled_train_labels = torch.tensor([label-1 for label in df_train_sampled.id]).squeeze()
     train_mean = torch.mean(sampled_train_images, axis=(0, 2, 3))
     train_std = torch.std(sampled_train_images, axis=(0, 2, 3))
-    sampled_val_or_test_images = torch.stack([transform(read_image(path).float() / 255) for path in df_val_or_test_sampled.path])
-    sampled_val_or_test_labels = torch.tensor([label for label in df_val_or_test_sampled.id]).squeeze()
+    #sampled_val_or_test_images = torch.stack([transform(read_image(path).float() / 255) for path in df_val_or_test_sampled.path])
+    sampled_val_or_test_labels = torch.tensor([label-1 for label in df_val_or_test_sampled.id]).squeeze()
 
     train_transform = torchvision.transforms.Compose([
         torchvision.transforms.Normalize(mean=train_mean, std=train_std),
@@ -177,6 +191,7 @@ def get_cifar10_datasets(root, n, tune=True, random_state=42):
 def train_one_epoch(model, criterion, optimizer, scheduler, dataloader):
     
     device = torch.device('cuda:0' if next(model.parameters()).is_cuda else 'cpu')
+    print(device)
     model.train()
     
     lrs = []
