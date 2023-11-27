@@ -98,9 +98,6 @@ if __name__=='__main__':
         cov_diag = args.prior_scale * cov_diag + args.prior_eps # Scale the variance
         criterion = losses.GaussianPriorCELossShifted(ce, loc.cpu(), cov_factor.t().cpu(), cov_diag.cpu())
         optimizer = torch.optim.SGD(model.parameters(), lr=args.lr_0, momentum=0.9, weight_decay=args.weight_decay, nesterov=True)
-        #params_without_decay = [{'params': name, 'weight_decay': 0.0} for name, param in model.named_parameters() if 'fc' not in name]
-        #params_with_decay = [{'params': model.fc.parameters(), 'weight_decay': args.weight_decay}]
-        #optimizer = torch.optim.SGD(params_without_decay+params_with_decay, lr=args.lr_0, momentum=0.9, nesterov=True)
     else:
         raise NotImplementedError('The specified prior type \'{}\' is not implemented.'.format(args.prior_type))
         

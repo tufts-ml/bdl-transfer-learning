@@ -11,73 +11,12 @@ import torchvision
 from torchvision.io import read_image
 import torchvision.transforms as transforms
 import torchmetrics
-from torchvision.datasets.utils import download_and_extract_archive
 # Importing our custom module(s)
 import folds
 
 def makedir_if_not_exist(directory):
     if not os.path.exists(directory):
         os.makedirs(directory)
-
-def get_oxford_pets_datasets(root, n, tune=True, random_state=42):
-    if not os.path.exists(os.path.join(root, 'annotations/')):
-      URL = "https://www.robots.ox.ac.uk/~vgg/data/pets/data/annotations.tar.gz"
-      download_and_extract_archive(URL, root)
-    if not os.path.exists(os.path.join(root, 'images/')):
-      URL = "https://www.robots.ox.ac.uk/~vgg/data/pets/data/images.tar.gz"
-      download_and_extract_archive(URL, root)
-    # Read annotations into dataframes 
-    df_trainval = pd.read_csv(os.path.join(root, 'annotations/trainval.txt'),sep=' ',names=['image','id','species','breed_id'])
-    n = int(n/df_trainval.id.max()) # number of images per class
-    df_test = pd.read_csv(os.path.join(root, 'annotations/test.txt'),sep=' ',names=['image','id','species','breed_id'])
-    # Add file paths to dataframe 
-    df_trainval['path'] = df_trainval['image'].apply(lambda image: os.path.join(root, 'images/{}.jpg'.format(image)))
-    df_test['path'] = df_test['image'].apply(lambda image: os.path.join(root, 'images/{}.jpg'.format(image)))
-    if tune:
-      df_train_sampled = df_trainval.groupby('id').apply(lambda x: x.sample(n=n, random_state=random_state)[:int(4/5*n)]).reset_index(drop = True)
-      df_val_or_test_sampled = df_trainval.groupby('id').apply(lambda x: x.sample(n=n, random_state=random_state)[int(4/5*n):]).reset_index(drop = True)
-    else:
-      df_train_sampled = df_trainval.groupby('id').apply(lambda x: x.sample(n=n, random_state=random_state)[:int(4/5*n)]).reset_index(drop = True)
-      df_val_or_test_sampled = df_test
-    
-    # For Oxford Pets we resize images before taking normalizing since images are different sizes
-    transform = transforms.Resize(size=(256,256))
-    # Some of the images have 4 channels RGBA. We ignore the last channel.
-    imgs_train = []
-    for path in df_train_sampled.path:
-        temp = transform(read_image(path).float()) / 255
-        temp = temp[:3,:,:] if temp.shape[0] == 4 else temp
-        imgs_train.append(temp)
-    sampled_train_images = torch.stack(imgs_train)
-    imgs_val_or_test = []
-    for path in df_val_or_test_sampled.path:
-        temp = transform(read_image(path).float()) / 255
-        temp = temp[:3,:,:] if temp.shape[0] == 4 else temp
-        imgs_val_or_test.append(temp)
-    sampled_val_or_test_images = torch.stack(imgs_val_or_test)
-    
-    #sampled_train_images = torch.stack([transform(read_image(path).float() / 255) for path in df_train_sampled.path])
-    sampled_train_labels = torch.tensor([label-1 for label in df_train_sampled.id]).squeeze()
-    train_mean = torch.mean(sampled_train_images, axis=(0, 2, 3))
-    train_std = torch.std(sampled_train_images, axis=(0, 2, 3))
-    #sampled_val_or_test_images = torch.stack([transform(read_image(path).float() / 255) for path in df_val_or_test_sampled.path])
-    sampled_val_or_test_labels = torch.tensor([label-1 for label in df_val_or_test_sampled.id]).squeeze()
-
-    train_transform = torchvision.transforms.Compose([
-        torchvision.transforms.Normalize(mean=train_mean, std=train_std),
-        torchvision.transforms.RandomCrop(size=(224, 224)),
-        torchvision.transforms.RandomHorizontalFlip(),
-    ])
-    val_or_test_transform = torchvision.transforms.Compose([
-        torchvision.transforms.Normalize(mean=train_mean, std=train_std),
-        torchvision.transforms.CenterCrop(size=(224, 224)),
-    ])
-
-    # Create Oxford Pets datasets
-    augmented_train_dataset = CIFAR10(sampled_train_images, sampled_train_labels, train_transform)
-    train_dataset = CIFAR10(sampled_train_images, sampled_train_labels, val_or_test_transform)
-    val_or_test_dataset = CIFAR10(sampled_val_or_test_images, sampled_val_or_test_labels, val_or_test_transform)
-    return augmented_train_dataset, train_dataset, val_or_test_dataset
 
 def get_ham10000_datasets(root, n, tune=True, random_state=42):
     # Load HAM10000 datasets (see HAM10000.ipynb to create labels.csv)
@@ -144,19 +83,27 @@ def get_cifar10_datasets(root, n, tune=True, random_state=42):
     if not hasattr(random_state, 'rand'):
         raise ValueError('Not a valid random number generator')
         
+    assert n%50 == 0 or n == 10, 'Invalid number of samples n={}'.format(n)
     # Load CIFAR-10 datasets
     cifar10_train_dataset = torchvision.datasets.CIFAR10(root=root, train=True, download=True)
     cifar10_test_dataset = torchvision.datasets.CIFAR10(root=root, train=False, download=True)
-    # Sample int(n/10) datapoints per class from CIFAR-10 training dataset
+    # Dictionary of labels and indices
     class_indices = {cifar10_label: [idx for idx, (image, label) in enumerate(cifar10_train_dataset) if label == cifar10_label] for cifar10_label in range(10)}
-    sampled_class_indices = np.array([random_state.choice(indices, int(n/10), replace=False) for label, indices in class_indices.items()]).flatten()
-    shuffled_sampled_class_indices = random_state.choice(sampled_class_indices, len(sampled_class_indices), replace=False)
+    shuffled_sampled_class_indices = {cifar10_label: random_state.choice(class_indices[cifar10_label], int(n/10), replace=False) for cifar10_label in class_indices.keys()}
     if tune:
-        train_indices = shuffled_sampled_class_indices[:int(4/5*n)]
-        val_or_test_indices = shuffled_sampled_class_indices[int(4/5*n):]
+        if n == 10:
+            mask = random_state.choice(np.tile([True, True, True, True, False], reps=int(n/5))[:n], n, replace=False)
+            train_indices = np.array(list(shuffled_sampled_class_indices.values())).flatten()[mask]
+            val_or_test_indices = np.array(list(shuffled_sampled_class_indices.values())).flatten()[~mask]
+        else:
+            train_indices = {cifar10_label: shuffled_sampled_class_indices[cifar10_label][:int(4/50*n)] for cifar10_label in shuffled_sampled_class_indices.keys()}
+            val_or_test_indices = {cifar10_label: shuffled_sampled_class_indices[cifar10_label][int(4/50*n):] for cifar10_label in shuffled_sampled_class_indices.keys()}
+            train_indices = np.array(list(train_indices.values())).flatten()
+            val_or_test_indices = np.array(list(val_or_test_indices.values())).flatten()
+        print(val_or_test_indices)
         val_or_test_dataset = [cifar10_train_dataset[index] for index in val_or_test_indices]
     else:
-        train_indices = shuffled_sampled_class_indices
+        train_indices = np.array(list(shuffled_sampled_class_indices.values())).flatten()
         val_or_test_dataset = cifar10_test_dataset
     # Get channel mean and std from training data
     sampled_train_dataset = [cifar10_train_dataset[index] for index in train_indices]
@@ -191,7 +138,6 @@ def get_cifar10_datasets(root, n, tune=True, random_state=42):
 def train_one_epoch(model, criterion, optimizer, scheduler, dataloader):
     
     device = torch.device('cuda:0' if next(model.parameters()).is_cuda else 'cpu')
-    print(device)
     model.train()
     
     lrs = []
@@ -256,3 +202,67 @@ def evaluate(model, criterion, dataloader, metric='accuracy', num_classes=10):
         running_acc = acc(torch.softmax(outputs, dim=1), targets).item()
 
     return running_loss, running_nll, running_prior, running_acc
+
+def print_difference(model):
+    model = model.cpu()
+    pretrained_model = load_ViT()
+    pretrained_weights = pretrained_model.state_dict()
+    for name, param in model.named_parameters():
+        if not 'heads.head' in name:
+            # TODO: Assert that names are the same
+            pretrained_size = pretrained_weights[name].shape
+            slice_indices = tuple(slice(0, int(dim)) for dim in pretrained_size)
+            print(torch.norm(param[slice_indices]-pretrained_weights[name]))
+
+def load_ViT():
+    # ViT-Base
+    image_size, patch_size, num_layers, num_heads, hidden_dim, mlp_dim = 224, 16, 12, 12, 768, 3072
+    pretrained_model = torchvision.models.VisionTransformer(
+        image_size=image_size,
+        patch_size=patch_size,
+        num_layers=num_layers,
+        num_heads=num_heads,
+        hidden_dim=hidden_dim,
+        mlp_dim=mlp_dim,
+    )
+    pretrained_weights = torchvision.models.ViT_B_16_Weights.DEFAULT
+    pretrained_weights = torchvision.models.ViT_B_16_Weights(pretrained_weights)
+    pretrained_model.load_state_dict(pretrained_weights.get_state_dict(progress=True))
+    return pretrained_model
+
+def load_modified_ViT(hidden_dim_per_head=64, frozen=True):
+    # ViT-Base
+    image_size, patch_size, num_layers, num_heads, hidden_dim, mlp_dim = 224, 16, 12, 12, 768, 3072
+    pretrained_model = torchvision.models.VisionTransformer(
+        image_size=image_size,
+        patch_size=patch_size,
+        num_layers=num_layers,
+        num_heads=num_heads,
+        hidden_dim=hidden_dim,
+        mlp_dim=mlp_dim,
+    )
+    pretrained_weights = torchvision.models.ViT_B_16_Weights.DEFAULT
+    pretrained_weights = torchvision.models.ViT_B_16_Weights(pretrained_weights)
+    pretrained_model.load_state_dict(pretrained_weights.get_state_dict(progress=True))
+    pretrained_weights = pretrained_model.state_dict()
+    # Modified ViT-Base
+    modified_hidden_dim = hidden_dim_per_head*num_heads
+    modified_model = torchvision.models.VisionTransformer(
+        image_size=image_size,
+        patch_size=patch_size,
+        num_layers=num_layers,
+        num_heads=num_heads,
+        hidden_dim=modified_hidden_dim,
+        mlp_dim=mlp_dim,
+    )
+    modified_weights = modified_model.state_dict()
+    for (pretrained_name, pretrained_param), (modified_name, modified_param) in zip(pretrained_weights.items(), modified_weights.items()):
+        # TODO: Assert that names are the same
+        pretrained_size = pretrained_weights[pretrained_name].shape
+        modified_size = modified_weights[modified_name].shape
+        modified_param = torch.zeros(modified_size)
+        slice_indices = tuple(slice(0, int(dim)) for dim in pretrained_size)
+        modified_param[slice_indices] = pretrained_param
+        modified_weights[pretrained_name] = modified_param 
+    modified_model.load_state_dict(modified_weights)
+    return modified_model
