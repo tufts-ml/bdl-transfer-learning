@@ -103,10 +103,13 @@ if __name__=='__main__':
         optimizer = torch.optim.SGD(model.parameters(), lr=args.lr_0, momentum=0.9, weight_decay=args.weight_decay, nesterov=True)
     else:
         raise NotImplementedError('The specified prior type \'{}\' is not implemented.'.format(args.prior_type))
-        
+    
     steps = int(30000/5) # 30,000 steps 5 chains
     epochs = int(steps*min(args.batch_size, len(train_dataset))/len(train_dataset))
-    number_of_batches = len(train_loader)
+    number_of_batches = len(train_loader_shuffled)
+    print("Number of training samples", len(train_dataset))
+    print("Number of val or test samples", len(val_or_test_loader))
+    print("Number of epochs", epochs)
     T = epochs*number_of_batches # Total number of iterations
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=T)
 
