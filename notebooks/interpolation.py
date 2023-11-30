@@ -20,59 +20,43 @@ def get_df(path):
 def get_last_epoch(df):
     return df.iloc[-1]
     
-def get_learned_hyperparameters(experiments_path, lr_0s, ns, prior_scales, random_states, weight_decays):
-    columns = ['lr_0', 'n', 'prior_scale', 'random_state', 'weight_decay']
+def get_best_hyperparameters(experiments_path, lr_0s, ns, prior_scales, prior_type, random_states, weight_decays):
+    columns = ['lr_0', 'n', 'prior_scale', 'prior_type', 'random_state', 'val_acc', 'weight_decay']
     df = pd.DataFrame(columns=columns)
     for n, random_state in itertools.product(ns, random_states):
         best_val_nll = np.inf
         best_hyperparameters = None
-        for prior_scale in prior_scales:
-            best_val_loss = np.inf
-            best_model_name = None
-            best_lr_0 = None
-            best_weight_decay = None
-            for lr_0, weight_decay in itertools.product(lr_0s, weight_decays):
-                model_name = 'learned_lr_0={}_n={}_prior_scale={}_random_state={}_weight_decay={}'\
-                .format(lr_0, n, prior_scale, random_state, weight_decay)
-                path =  '{}/{}.csv'.format(experiments_path, model_name)
-                val_loss = get_val_loss(get_df(path))
-                if val_loss < best_val_loss: best_val_loss = val_loss; best_model_name = model_name; best_lr_0 = lr_0; best_weight_decay = weight_decay
-            path = '{}/{}.csv'.format(experiments_path, best_model_name)
-            val_nll = get_val_nll(get_df(path))
-            if val_nll < best_val_nll: best_val_nll = val_nll; best_hyperparameters = [best_lr_0, n, prior_scale, random_state, best_weight_decay]
-        df.loc[df.shape[0]] = best_hyperparameters
-    return df
-
-def get_nonlearned_hyperparameters(experiments_path, lr_0s, ns, random_states, weight_decays):
-    columns = ['lr_0', 'n', 'random_state', 'weight_decay']
-    df = pd.DataFrame(columns=columns)
-    for n, random_state in itertools.product(ns, random_states):
-        best_val_nll = np.inf
-        best_hyperparameters = None
-        for lr_0, weight_decay in itertools.product(lr_0s, weight_decays):
-            model_name = 'nonlearned_lr_0={}_n={}_random_state={}_weight_decay={}'\
-            .format(lr_0, n, random_state, weight_decay)
+        for lr_0, prior_scale, weight_decay in itertools.product(lr_0s, prior_scales, weight_decays):
+            if prior_scale:
+                model_name = '{}_lr_0={}_n={}_prior_scale={}_random_state={}_weight_decay={}'\
+                .format(prior_type, lr_0, n, prior_scale, random_state, weight_decay)
+            else:
+                model_name = '{}_lr_0={}_n={}_random_state={}_weight_decay={}'\
+                .format(prior_type, lr_0, n, random_state, weight_decay)
             path =  '{}/{}.csv'.format(experiments_path, model_name)
             val_nll = get_val_nll(get_df(path))
-            if val_nll < best_val_nll: best_val_nll = val_nll; best_hyperparameters = [lr_0, n, random_state, weight_decay]
+            val_acc = get_val_acc(get_df(path))
+            if val_nll < best_val_nll: best_val_nll = val_nll; best_hyperparameters = [lr_0, n, prior_scale, prior_type, random_state, val_acc, weight_decay]
         df.loc[df.shape[0]] = best_hyperparameters
     return df
 
-def get_val_loss(df):
-    return df.val_or_test_loss.values[-1]
+def get_val_acc(df):
+    return df.val_or_test_acc.values[-1]
 
 def get_val_nll(df):
     return df.val_or_test_nll.values[-1]
 
-def interpolate_checkpoints(first_checkpoint, second_checkpoint, n=25):
+def interpolate_checkpoints(first_checkpoint, second_checkpoint, n=41):
     interpolations = [{} for _ in range(n)]
-    alphas = np.linspace(1.1, -0.1, num=n)
-    betas =  np.linspace(-0.1, 1.1, num=n)
+    alphas = np.linspace(1.5, -0.5, num=n)
+    betas =  np.linspace(-0.5, 1.5, num=n)
     for interpolation_index, (alpha, beta) in enumerate(zip(alphas, betas)):
         for key in first_checkpoint.keys():
             interpolations[interpolation_index][key] = (alpha * first_checkpoint[key].detach().clone()) + (beta * second_checkpoint[key].detach().clone()).detach().clone()
-            if 'running_var' in key:
-                interpolations[interpolation_index][key][interpolations[interpolation_index][key] < 1e-20] = 1e-20
+            if 'running_var' in key and alpha > 1.0:
+                interpolations[interpolation_index][key] = first_checkpoint[key].detach().clone()
+            if 'running_var' in key and alpha < 0.0:
+                interpolations[interpolation_index][key] = second_checkpoint[key].detach().clone()
     return interpolations
 
 if __name__=='__main__':
@@ -81,16 +65,19 @@ if __name__=='__main__':
     lr_0s = np.logspace(-1, -4, num=4)
     ns = [1000]
     prior_scales = np.logspace(0, 9, num=10)
+    prior_type = 'learned'
     random_states = [1001, 2001, 3001]
     weight_decays = np.append(np.logspace(-2, -6, num=5), 0)
-    learned_hyperparameters = get_learned_hyperparameters(experiments_path, lr_0s, ns, prior_scales, random_states, weight_decays)
+    learned_hyperparameters = get_best_hyperparameters(experiments_path, lr_0s, ns, prior_scales, prior_type, random_states, weight_decays)
     # Nonlearned
     experiments_path = '/cluster/tufts/hugheslab/eharve06/bdl-transfer-learning/experiments/tuned_CIFAR-10'
     lr_0s = np.logspace(-1, -4, num=4)
     ns = [1000]
+    prior_scales = [None]
+    prior_type = 'nonlearned'
     random_states = [1001, 2001, 3001]
     weight_decays = np.append(np.logspace(-2, -6, num=5), 0)
-    nonlearned_hyperparameters = get_nonlearned_hyperparameters(experiments_path, lr_0s, ns, random_states, weight_decays)
+    nonlearned_hyperparameters = get_best_hyperparameters(experiments_path, lr_0s, ns, prior_scales, prior_type, random_states, weight_decays)
     
     experiments_path = '/cluster/tufts/hugheslab/eharve06/bdl-transfer-learning/experiments/retrained_CIFAR-10'
     for (learned_index, learned_row), (nonlearned_index, nonlearned_row) in zip(learned_hyperparameters.iterrows(), nonlearned_hyperparameters.iterrows()):

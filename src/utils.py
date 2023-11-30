@@ -11,6 +11,7 @@ import torchvision
 from torchvision.io import read_image
 import torchvision.transforms as transforms
 import torchmetrics
+from torchvision.datasets.utils import download_and_extract_archive
 # Importing our custom module(s)
 import folds
 
@@ -20,11 +21,11 @@ def makedir_if_not_exist(directory):
 
 def get_oxford_pets_datasets(root, n, tune=True, random_state=42):
     if not os.path.exists(os.path.join(root, 'annotations/')):
-      URL = "https://www.robots.ox.ac.uk/~vgg/data/pets/data/annotations.tar.gz"
-      download_and_extract_archive(URL, root)
+        URL = "https://www.robots.ox.ac.uk/~vgg/data/pets/data/annotations.tar.gz"
+        download_and_extract_archive(URL, root)
     if not os.path.exists(os.path.join(root, 'images/')):
-      URL = "https://www.robots.ox.ac.uk/~vgg/data/pets/data/images.tar.gz"
-      download_and_extract_archive(URL, root)
+        URL = "https://www.robots.ox.ac.uk/~vgg/data/pets/data/images.tar.gz"
+        download_and_extract_archive(URL, root)
     # Read annotations into dataframes 
     df_trainval = pd.read_csv(os.path.join(root, 'annotations/trainval.txt'),sep=' ',names=['image','id','species','breed_id'])
     n = int(n/df_trainval.id.max()) # number of images per class
@@ -165,7 +166,6 @@ def get_cifar10_datasets(root, n, tune=True, random_state=42):
             val_or_test_indices = {cifar10_label: shuffled_sampled_class_indices[cifar10_label][int(4/50*n):] for cifar10_label in shuffled_sampled_class_indices.keys()}
             train_indices = np.array(list(train_indices.values())).flatten()
             val_or_test_indices = np.array(list(val_or_test_indices.values())).flatten()
-        print(val_or_test_indices)
         val_or_test_dataset = [cifar10_train_dataset[index] for index in val_or_test_indices]
     else:
         train_indices = np.array(list(shuffled_sampled_class_indices.values())).flatten()
@@ -267,67 +267,3 @@ def evaluate(model, criterion, dataloader, metric='accuracy', num_classes=10):
         running_acc = acc(torch.softmax(outputs, dim=1), targets).item()
 
     return running_loss, running_nll, running_prior, running_acc
-
-def print_difference(model):
-    model = model.cpu()
-    pretrained_model = load_ViT()
-    pretrained_weights = pretrained_model.state_dict()
-    for name, param in model.named_parameters():
-        if not 'heads.head' in name:
-            # TODO: Assert that names are the same
-            pretrained_size = pretrained_weights[name].shape
-            slice_indices = tuple(slice(0, int(dim)) for dim in pretrained_size)
-            print(torch.norm(param[slice_indices]-pretrained_weights[name]))
-
-def load_ViT():
-    # ViT-Base
-    image_size, patch_size, num_layers, num_heads, hidden_dim, mlp_dim = 224, 16, 12, 12, 768, 3072
-    pretrained_model = torchvision.models.VisionTransformer(
-        image_size=image_size,
-        patch_size=patch_size,
-        num_layers=num_layers,
-        num_heads=num_heads,
-        hidden_dim=hidden_dim,
-        mlp_dim=mlp_dim,
-    )
-    pretrained_weights = torchvision.models.ViT_B_16_Weights.DEFAULT
-    pretrained_weights = torchvision.models.ViT_B_16_Weights(pretrained_weights)
-    pretrained_model.load_state_dict(pretrained_weights.get_state_dict(progress=True))
-    return pretrained_model
-
-def load_modified_ViT(hidden_dim_per_head=64, frozen=True):
-    # ViT-Base
-    image_size, patch_size, num_layers, num_heads, hidden_dim, mlp_dim = 224, 16, 12, 12, 768, 3072
-    pretrained_model = torchvision.models.VisionTransformer(
-        image_size=image_size,
-        patch_size=patch_size,
-        num_layers=num_layers,
-        num_heads=num_heads,
-        hidden_dim=hidden_dim,
-        mlp_dim=mlp_dim,
-    )
-    pretrained_weights = torchvision.models.ViT_B_16_Weights.DEFAULT
-    pretrained_weights = torchvision.models.ViT_B_16_Weights(pretrained_weights)
-    pretrained_model.load_state_dict(pretrained_weights.get_state_dict(progress=True))
-    pretrained_weights = pretrained_model.state_dict()
-    # Modified ViT-Base
-    modified_hidden_dim = hidden_dim_per_head*num_heads
-    modified_model = torchvision.models.VisionTransformer(
-        image_size=image_size,
-        patch_size=patch_size,
-        num_layers=num_layers,
-        num_heads=num_heads,
-        hidden_dim=modified_hidden_dim,
-        mlp_dim=mlp_dim,
-    )
-    modified_weights = modified_model.state_dict()
-    for (pretrained_name, pretrained_param), (modified_name, modified_param) in zip(pretrained_weights.items(), modified_weights.items()):
-        # TODO: Assert that names are the same
-        pretrained_size = pretrained_weights[pretrained_name].shape
-        modified_size = modified_weights[modified_name].shape
-        modified_param = torch.zeros(modified_size)
-        slice_indices = tuple(slice(0, int(dim)) for dim in pretrained_size)
-        modified_param[slice_indices] = pretrained_param
-        modified_weights[pretrained_name] = modified_param 
-    modified_model.load_state_dict(modified_weights)
-    return modified_model
