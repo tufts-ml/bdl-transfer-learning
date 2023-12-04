@@ -1,5 +1,7 @@
 # bdl-transfer-learning
 
+## Reproducing Baseline Results
+
 |    | prior_type   |     n |   lr_0 |   random_state |   weight_decay |
 |---:|:-------------|------:|-------:|---------------:|---------------:|
 |  0 | nonlearned   |    10 | 0.001  |           1001 |         0.01   |
