@@ -2,7 +2,7 @@
 
 ## `main.py` Arguments
 
-
+TODO: Explain all arguments used in main.py.
 
 ## Reproducing Baseline Results
 
