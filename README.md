@@ -6,7 +6,7 @@
 
 ## Reproducing Baseline Results
 
-#### Optimal Hyperparameters
+### Optimal Hyperparameters
 
 Optimal hyperparameters for standard *transfer learning* with the specified random state.
 
@@ -18,7 +18,7 @@ Optimal hyperparameters for standard *transfer learning* with the specified rand
 |  3 | nonlearned   | 10000 | 0.01   |           1001 |         0.001  |
 |  4 | nonlearned   | 50000 | 0.01   |           1001 |         1e-05  |
 
-#### Command Line Input
+### Command Line Input
 
 To evaluate the optimal hyperparameters for standard *transfer learning*, use the following commands with the specified random state:
 
