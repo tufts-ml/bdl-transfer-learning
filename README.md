@@ -4,7 +4,7 @@
 
 ##### Optimal Hyperparameters
 
-Optimal hyperparameters for standard *transfer learning* with the specified random state (`random_state=1001`).
+Optimal hyperparameters for standard *transfer learning* with the specified random state.
 
 |    | prior_type   |     n |   lr_0 |   random_state |   weight_decay |
 |---:|:-------------|------:|-------:|---------------:|---------------:|
@@ -13,6 +13,10 @@ Optimal hyperparameters for standard *transfer learning* with the specified rand
 |  2 | nonlearned   |  1000 | 0.0001 |           1001 |         0.0001 |
 |  3 | nonlearned   | 10000 | 0.01   |           1001 |         0.001  |
 |  4 | nonlearned   | 50000 | 0.01   |           1001 |         1e-05  |
+
+##### Command Line Input
+
+To evaluate the optimal hyperparameters for standard *transfer learning*, use the following commands with the specified random state:
 
 `python CIFAR-10_main.py --dataset_path='/cluster/tufts/hugheslab/eharve06/CIFAR-10' --experiments_path='/cluster/tufts/hugheslab/eharve06/bdl-transfer-learning/experiments/retrained_CIFAR-10_Copy1' --lr_0=0.001 --model_name='nonlearned_lr_0=0.001_n=10_random_state=1001_weight_decay=0.01' --n=10 --prior_path='/cluster/tufts/hugheslab/eharve06/resnet50_ssl_prior' --prior_type='nonlearned' --random_state=1001 --weight_decay=0.01`
 
