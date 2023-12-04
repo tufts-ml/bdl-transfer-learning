@@ -20,4 +20,4 @@
 
 `python ../src/CIFAR-10_main.py --dataset_path='/cluster/tufts/hugheslab/eharve06/CIFAR-10' --experiments_path='/cluster/tufts/hugheslab/eharve06/bdl-transfer-learning/experiments/retrained_CIFAR-10_Copy1' --lr_0=0.01 --model_name='nonlearned_lr_0=0.01_n=50000_random_state=1001_weight_decay=1e-05' --n=50000 --prior_path='/cluster/tufts/hugheslab/eharve06/resnet50_ssl_prior' --prior_type='nonlearned' --random_state=1001 --wandb --wandb_project='retrained_CIFAR-10' --weight_decay=1e-05`
 
-Note: If you would like to use (wandb)[https://wandb.ai/] add `--wandb --wandb_project={project_name}`.
+Note: If you would like to use [wandb](https://wandb.ai/) add `--wandb --wandb_project={project_name}`.
