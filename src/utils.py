@@ -36,9 +36,9 @@ def get_oxford_pets_datasets(root, n, tune=True, random_state=42):
     
     if n==1: ## if one per class
         if tune:
-            df_sampled = df_trainval.groupby('id').apply(lambda x: x.sample(n=n, random_state=random_state)).reset_index(drop = True)
+            df_sampled = df_trainval.groupby('id').apply(lambda x: x.sample(n=n, random_state=random_state)).reset_index(drop=True)
             ### 4/5 of the sampled data for training
-            df_train_sampled = df_sampled.sample(n=int(np.ceil(4/5*37*n)), random_state=random_state).reset_index(drop = True)
+            df_train_sampled = df_sampled.sample(n=int(np.ceil(4/5*37*n)), random_state=random_state).reset_index(drop=True)
             ### remaining 1/5 of the sampled data for validation
             df_val_or_test_sampled = df_sampled[~df_sampled.index.isin(df_train_sampled.index)]
             #### Reset indices
@@ -46,21 +46,21 @@ def get_oxford_pets_datasets(root, n, tune=True, random_state=42):
             df_val_or_test_sampled = df_val_or_test_sampled.reset_index(drop=True)
             print(df_train_sampled.shape,df_val_or_test_sampled.shape)
         else:
-            df_train_sampled = df_trainval.groupby('id').apply(lambda x: x.sample(n=n, random_state=random_state)).reset_index(drop = True)
+            df_train_sampled = df_trainval.groupby('id').apply(lambda x: x.sample(n=n, random_state=random_state)).reset_index(drop=True)
             df_val_or_test_sampled = df_test
     else:
         if tune:
-            df_train_sampled = df_trainval.groupby('id').apply(lambda x: x.sample(n=n, random_state=random_state)[:int(np.ceil(4/5*n))]).reset_index(drop = True)
-            df_val_or_test_sampled = df_trainval.groupby('id').apply(lambda x: x.sample(n=n, random_state=random_state)[int(np.ceil(4/5*n)):]).reset_index(drop = True)
+            df_train_sampled = df_trainval.groupby('id').apply(lambda x: x.sample(n=n, random_state=random_state)[:int(np.ceil(4/5*n))]).reset_index(drop=True)
+            df_val_or_test_sampled = df_trainval.groupby('id').apply(lambda x: x.sample(n=n, random_state=random_state)[int(np.ceil(4/5*n)):]).reset_index(drop=True)
         else:
-            df_train_sampled = df_trainval.groupby('id').apply(lambda x: x.sample(n=n, random_state=random_state)).reset_index(drop = True)
+            df_train_sampled = df_trainval.groupby('id').apply(lambda x: x.sample(n=n, random_state=random_state)).reset_index(drop=True)
             df_val_or_test_sampled = df_test
     
     # For Oxford Pets we resize images before normalizing since images are different sizes
-    transform = transforms.Resize(size=(256,256))
+    transform = transforms.Resize(size=(256, 256))
     # # Some of the images have 4 channels RGBA. We ignore the last channel.
-    sampled_train_images = torch.stack([transform(read_image(path).float()[:3,:,:]) / 255 for path in df_train_sampled.path])
-    sampled_val_or_test_images = torch.stack([transform(read_image(path).float()[:3,:,:]) / 255 for path in df_val_or_test_sampled.path])
+    sampled_train_images = torch.stack([transform(read_image(path).float()[:3,:,:])/255 for path in df_train_sampled.path])
+    sampled_val_or_test_images = torch.stack([transform(read_image(path).float()[:3,:,:])/255 for path in df_val_or_test_sampled.path])
     
     sampled_train_labels = torch.tensor([label-1 for label in df_train_sampled.id]).squeeze()
     train_mean = torch.mean(sampled_train_images, axis=(0, 2, 3))
