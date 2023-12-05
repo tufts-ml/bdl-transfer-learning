@@ -4,7 +4,7 @@
 
 TODO: Explain all arguments used in main.py.
 
-## Reproducing Baseline Results
+## Reproducing Baseline CIFAR-10 Results
 
 ### Install Enviroment
 
