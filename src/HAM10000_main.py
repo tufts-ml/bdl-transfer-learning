@@ -26,6 +26,7 @@ if __name__=='__main__':
     parser.add_argument('--prior_type', help='Determines criterion', required=True, type=str)
     parser.add_argument('--prior_scale', default=1e10, help='Scaling factor for the prior (default: 1e10)', type=float)
     parser.add_argument('--random_state', default=42, help='Random state (default: 42)', type=int)
+    parser.add_argument('--save', action='store_true', default=False, help='Whether or not to save the model (default: False)')
     parser.add_argument('--tune', action='store_true', default=False, help='Whether validation or test set is used (default: False)')
     parser.add_argument('--wandb', action='store_true', default=False, help='Whether or not to log to wandb')
     parser.add_argument('--wandb_project', default='test', help='Wandb project name (default: \'test\')', type=str)
@@ -40,7 +41,7 @@ if __name__=='__main__':
     # Create sampled HAM10000 datasets
     augmented_train_dataset, train_dataset, val_or_test_dataset = utils.get_ham10000_datasets(root=args.dataset_path, n=args.n, tune=args.tune, random_state=args.random_state)
     # Create dataloaders
-    train_loader_shuffled = torch.utils.data.DataLoader(augmented_train_dataset, batch_size=min(args.batch_size, len(train_dataset)), shuffle=True, drop_last=True)
+    train_loader_shuffled = torch.utils.data.DataLoader(augmented_train_dataset, batch_size=min(args.batch_size, len(augmented_train_dataset)), shuffle=True, drop_last=True)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size)
     val_or_test_loader = torch.utils.data.DataLoader(val_or_test_dataset, batch_size=args.batch_size)
     
@@ -101,11 +102,9 @@ if __name__=='__main__':
     else:
         raise NotImplementedError('The specified prior type \'{}\' is not implemented.'.format(args.prior_type))
         
-    steps = int(30000/5) # 30,000 steps 5 chains
-    epochs = int(steps*min(args.batch_size, len(train_dataset))/len(train_dataset))
-    number_of_batches = len(train_loader)
-    T = epochs*number_of_batches # Total number of iterations
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=T)
+    steps = 6000
+    epochs = int(steps/len(train_loader_shuffled))
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs*len(train_loader_shuffled))
 
     columns = ['epoch', 'train_acc', 'train_loss', 'train_nll', 'train_prior', 'val_or_test_acc', 'val_or_test_loss', 'val_or_test_nll', 'val_or_test_prior']
     model_history_df = pd.DataFrame(columns=columns)
@@ -142,5 +141,6 @@ if __name__=='__main__':
         model_path = os.path.join(args.experiments_path, '{}.csv'.format(args.model_name))
         model_history_df.to_csv(model_path)
         
-    #model_path = os.path.join(args.experiments_path, '{}.pth'.format(args.model_name))
-    #torch.save(model.state_dict(), model_path)
+    if args.save:
+        model_path = os.path.join(args.experiments_path, '{}.pth'.format(args.model_name))
+        torch.save(model.state_dict(), model_path)

@@ -61,16 +61,16 @@ def interpolate_checkpoints(first_checkpoint, second_checkpoint, n=41):
 
 if __name__=='__main__':
     # Learned
-    experiments_path = '/cluster/tufts/hugheslab/eharve06/bdl-transfer-learning/experiments/tuned_CIFAR-10'
-    lr_0s = np.logspace(-1, -4, num=4)
+    experiments_path = '/cluster/tufts/hugheslab/eharve06/bdl-transfer-learning/experiments/tuned_CIFAR-10_Copy1'
+    lr_0s = np.logspace(-1, -2, num=2)
     ns = [1000]
-    prior_scales = np.logspace(0, 9, num=10)
+    prior_scales = np.logspace(0, 4, num=5)
     prior_type = 'learned'
     random_states = [1001, 2001, 3001]
     weight_decays = np.append(np.logspace(-2, -6, num=5), 0)
     learned_hyperparameters = get_best_hyperparameters(experiments_path, lr_0s, ns, prior_scales, prior_type, random_states, weight_decays)
     # Nonlearned
-    experiments_path = '/cluster/tufts/hugheslab/eharve06/bdl-transfer-learning/experiments/tuned_CIFAR-10'
+    experiments_path = '/cluster/tufts/hugheslab/eharve06/bdl-transfer-learning/experiments/tuned_CIFAR-10_Copy1'
     lr_0s = np.logspace(-1, -4, num=4)
     ns = [1000]
     prior_scales = [None]
@@ -79,13 +79,14 @@ if __name__=='__main__':
     weight_decays = np.append(np.logspace(-2, -6, num=5), 0)
     nonlearned_hyperparameters = get_best_hyperparameters(experiments_path, lr_0s, ns, prior_scales, prior_type, random_states, weight_decays)
     
-    experiments_path = '/cluster/tufts/hugheslab/eharve06/bdl-transfer-learning/experiments/retrained_CIFAR-10'
     for (learned_index, learned_row), (nonlearned_index, nonlearned_row) in zip(learned_hyperparameters.iterrows(), nonlearned_hyperparameters.iterrows()):
         # Load learned checkpoint
+        experiments_path = '/cluster/tufts/hugheslab/eharve06/bdl-transfer-learning/experiments/retrained_CIFAR-10_Copy1'
         model_name = 'learned_lr_0={}_n={}_prior_scale={}_random_state={}_weight_decay={}'\
         .format(learned_row.lr_0, int(learned_row.n), learned_row.prior_scale, int(learned_row.random_state), learned_row.weight_decay)
         learned_checkpoint = torch.load('{}/{}.pth'.format(experiments_path, model_name), map_location=torch.device('cpu'))
         # Load nonlearned checkpoint
+        experiments_path = '/cluster/tufts/hugheslab/eharve06/bdl-transfer-learning/experiments/retrained_CIFAR-10_Copy1'
         model_name = 'nonlearned_lr_0={}_n={}_random_state={}_weight_decay={}'\
         .format(nonlearned_row.lr_0, int(nonlearned_row.n), int(nonlearned_row.random_state), nonlearned_row.weight_decay)
         nonlearned_checkpoint = torch.load('{}/{}.pth'.format(experiments_path, model_name), map_location=torch.device('cpu'))

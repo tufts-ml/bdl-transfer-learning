@@ -41,7 +41,7 @@ class MAPAdaptationCELoss(nn.Module):
 
     def forward(self, logits, targets, N, params):
         nll = self.ce(logits, targets)
-        regularizer = self.weight_decay * torch.norm(params - self.loc)**2
+        regularizer = (self.weight_decay/2) * torch.norm(params - self.loc)**2
         regularizer = torch.clamp(regularizer, min=-1e20, max=1e20)
         loss = nll + regularizer
         matrices = {'loss': loss, 'nll': nll, 'prior': regularizer}

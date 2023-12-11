@@ -12,9 +12,6 @@ import folds
 import losses
 import utils
 
-# python CIFAR10_main.py --dataset_path='/cluster/tufts/hugheslab/eharve06/CIFAR-10' --experiments_path='/cluster/tufts/hugheslab/eharve06/bdl-transfer-learning/experiments/test' --lr_0=0.01 --model_name='nonlearned_lr_0=0.01_n=100_random_state=1001_weight_decay=0.0' --n=100 --prior_path='/cluster/tufts/hugheslab/eharve06/resnet50_ssl_prior' --prior_type='nonlearned' --random_state=1001 --tune --wandb --weight_decay=0.0
-# python CIFAR10_main.py --dataset_path='/cluster/tufts/hugheslab/eharve06/CIFAR-10' --experiments_path='/cluster/tufts/hugheslab/eharve06/bdl-transfer-learning/experiments/test' --lr_0=0.01 --model_name='adapted_lr_0=0.01_n=100_random_state=1001_weight_decay=0.0001' --n=100 --prior_path='/cluster/tufts/hugheslab/eharve06/resnet50_ssl_prior' --prior_type='adapted' --random_state=1001 --tune --wandb --weight_decay=0.0001
-# python CIFAR10_main.py --dataset_path='/cluster/tufts/hugheslab/eharve06/CIFAR-10' --experiments_path='/cluster/tufts/hugheslab/eharve06/bdl-transfer-learning/experiments/test' --lr_0=0.01 --model_name='learned_lr_0=0.01_n=100_prior_scale=10_random_state=1001_weight_decay=0.0001' --n=100 --prior_path='/cluster/tufts/hugheslab/eharve06/resnet50_ssl_prior' --prior_type='learned' --prior_scale=10 --random_state=1001 --tune --wandb --weight_decay=0.0001
 if __name__=='__main__':
     parser = argparse.ArgumentParser(description='CIFAR10_main.py')    
     parser.add_argument('--batch_size', default=128, help='Batch size (default: 128)', type=int)
@@ -29,6 +26,7 @@ if __name__=='__main__':
     parser.add_argument('--prior_type', help='Determines criterion', required=True, type=str)
     parser.add_argument('--prior_scale', default=1e10, help='Scaling factor for the prior (default: 1e10)', type=float)
     parser.add_argument('--random_state', default=42, help='Random state (default: 42)', type=int)
+    parser.add_argument('--save', action='store_true', default=False, help='Whether or not to save the model (default: False)')
     parser.add_argument('--tune', action='store_true', default=False, help='Whether validation or test set is used (default: False)')
     parser.add_argument('--wandb', action='store_true', default=False, help='Whether or not to log to wandb')
     parser.add_argument('--wandb_project', default='test', help='Wandb project name (default: \'test\')', type=str)
@@ -43,7 +41,7 @@ if __name__=='__main__':
     # Create sampled CIFAR10 datasets
     augmented_train_dataset, train_dataset, val_or_test_dataset = utils.get_cifar10_datasets(root=args.dataset_path, n=args.n, tune=args.tune, random_state=args.random_state)
     # Create dataloaders
-    train_loader_shuffled = torch.utils.data.DataLoader(augmented_train_dataset, batch_size=min(args.batch_size, len(train_dataset)), shuffle=True, drop_last=True)
+    train_loader_shuffled = torch.utils.data.DataLoader(augmented_train_dataset, batch_size=min(args.batch_size, len(augmented_train_dataset)), shuffle=True, drop_last=True)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size)
     val_or_test_loader = torch.utils.data.DataLoader(val_or_test_dataset, batch_size=args.batch_size)
     
@@ -90,7 +88,7 @@ if __name__=='__main__':
         optimizer = torch.optim.SGD(model.parameters(), lr=args.lr_0, momentum=0.9, weight_decay=args.weight_decay, nesterov=True)
     elif args.prior_type == 'adapted':
         loc = torch.load('{}/resnet50_ssl_prior_mean.pt'.format(args.prior_path))
-        loc = torch.cat((loc, torch.zeros(num_heads)))
+        loc = torch.cat((loc, torch.zeros((2048*num_heads)+num_heads)))
         criterion = losses.MAPAdaptationCELoss(ce, loc.cpu(), args.weight_decay)
         optimizer = torch.optim.SGD(model.parameters(), lr=args.lr_0, momentum=0.9, weight_decay=0.0, nesterov=True)
     elif args.prior_type == 'learned':
@@ -103,12 +101,10 @@ if __name__=='__main__':
         optimizer = torch.optim.SGD(model.parameters(), lr=args.lr_0, momentum=0.9, weight_decay=args.weight_decay, nesterov=True)
     else:
         raise NotImplementedError('The specified prior type \'{}\' is not implemented.'.format(args.prior_type))
-        
-    steps = int(30000/5) # 30,000 steps 5 chains
-    epochs = int(steps*min(args.batch_size, len(train_dataset))/len(train_dataset))
-    number_of_batches = len(train_loader)
-    T = epochs*number_of_batches # Total number of iterations
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=T)
+
+    steps = 6000
+    epochs = int(steps/len(train_loader_shuffled))
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs*len(train_loader_shuffled))
 
     columns = ['epoch', 'train_acc', 'train_loss', 'train_nll', 'train_prior', 'val_or_test_acc', 'val_or_test_loss', 'val_or_test_nll', 'val_or_test_prior']
     model_history_df = pd.DataFrame(columns=columns)
@@ -144,6 +140,7 @@ if __name__=='__main__':
         
         model_path = os.path.join(args.experiments_path, '{}.csv'.format(args.model_name))
         model_history_df.to_csv(model_path)
-        
-    #model_path = os.path.join(args.experiments_path, '{}.pth'.format(args.model_name))
-    #torch.save(model.state_dict(), model_path)
+    
+    if args.save:
+        model_path = os.path.join(args.experiments_path, '{}.pth'.format(args.model_name))
+        torch.save(model.state_dict(), model_path)
