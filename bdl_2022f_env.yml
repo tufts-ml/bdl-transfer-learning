@@ -1,4 +1,4 @@
-## 1. Set up basic conda env without any PyTorch.
+## 1. Set up basic conda env without PyTorch.
 ##    conda env create -f bdl_2022f.yml 
 ## 2. Install PyTorch with specific cudatoolkit version.
 ##    conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit=11.3 -c pytorch
