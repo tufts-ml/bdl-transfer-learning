@@ -1,24 +1,22 @@
-## BDL2022f env without any torch or jax packages (see github.com/tufts-ml-courses/cs152BDL-22f-assignments/blob/main/bdl_2022f_env.yml)
-name: bdl_2022f_env
+## 1. Set up basic conda env without any PyTorch.
+##    conda env create -f bdl_2022f.yml 
+## 2. Install PyTorch with specific cudatoolkit version.
+##    conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit=11.3 -c pytorch
+name: bdl-transfer-learning
 channels:
   - defaults
+  - pip
 dependencies:
   - python==3.8
   - pip
   - git
-  ## Scientific Computing
   - numpy>=1.18
   - scipy>=1.3
-  ## Visualization
   - jupyter>=1.0
   - matplotlib>=3.1
   - seaborn>=0.11
-  ## Data I/O
   - pandas>=0.22
   - dill>=0.2
-  ## Machine Learning
   - scikit-learn>=1.1.0
-  ## Added by Ethan Harvey for bdl-transfer-learning
-  - wandb
+  - pip::wandb
   - torchmetrics
-  ## TODO: Make sure to install pytorch and jax with specific cudatoolkit version (see https://gist.github.com/michaelchughes/a43b98edb51feca49c3e6b5bb82347ca)
