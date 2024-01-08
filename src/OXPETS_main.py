@@ -90,7 +90,7 @@ if __name__=='__main__':
         optimizer = torch.optim.SGD(model.parameters(), lr=args.lr_0, momentum=0.9, weight_decay=args.weight_decay, nesterov=True)
     elif args.prior_type == 'adapted':
         loc = torch.load('{}/resnet50_ssl_prior_mean.pt'.format(args.prior_path))
-        loc = torch.cat((loc, torch.zeros(num_heads)))
+        loc = torch.cat((loc, torch.zeros((2048*num_heads)+num_heads)))
         criterion = losses.MAPAdaptationCELoss(ce, loc.cpu(), args.weight_decay)
         optimizer = torch.optim.SGD(model.parameters(), lr=args.lr_0, momentum=0.9, weight_decay=0.0, nesterov=True)
     elif args.prior_type == 'learned':
@@ -104,14 +104,13 @@ if __name__=='__main__':
     else:
         raise NotImplementedError('The specified prior type \'{}\' is not implemented.'.format(args.prior_type))
     
-    steps = int(30000/5) # 30,000 steps 5 chains
-    epochs = int(steps*min(args.batch_size, len(train_dataset))/len(train_dataset))
-    number_of_batches = len(train_loader_shuffled)
+    
+    steps = 6000
+    epochs = int(steps/len(train_loader_shuffled))
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs*len(train_loader_shuffled))
     print("Number of training samples", len(train_dataset))
     print("Number of val or test samples", len(val_or_test_loader))
     print("Number of epochs", epochs)
-    T = epochs*number_of_batches # Total number of iterations
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=T)
 
     columns = ['epoch', 'train_acc', 'train_loss', 'train_nll', 'train_prior', 'val_or_test_acc', 'val_or_test_loss', 'val_or_test_nll', 'val_or_test_prior']
     model_history_df = pd.DataFrame(columns=columns)
