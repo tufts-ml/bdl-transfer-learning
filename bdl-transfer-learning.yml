@@ -1,0 +1,22 @@
+## 1. Set up basic conda env without PyTorch.
+##    conda env create -f bdl-transfer-learning.yml 
+## 2. Install PyTorch with specific cudatoolkit version.
+##    conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit=11.3 -c pytorch
+name: bdl-transfer-learning
+channels:
+  - defaults
+dependencies:
+  - python>=3.8
+  - pip
+  - git
+  - numpy>=1.18
+  - scipy>=1.3
+  - jupyter>=1.0
+  - matplotlib>=3.1
+  - seaborn>=0.11
+  - pandas>=0.22
+  - dill>=0.2
+  - scikit-learn>=1.1.0
+  - torchmetrics
+  - pip:
+    - wandb
