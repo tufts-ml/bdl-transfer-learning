@@ -34,4 +34,4 @@ To evaluate the optimal hyperparameters for standard *transfer learning*, use th
 
 `python CIFAR-10_main.py --dataset_path={dataset_path} --experiments_path={experiments_path} --lr_0=0.01 --model_name='nonlearned_lr_0=0.01_n=50000_random_state=1001_weight_decay=1e-05' --n=50000 --prior_path={prior_path} --prior_type='nonlearned' --random_state=1001 --weight_decay=1e-05`
 
-Note: If you would like to use [wandb](https://wandb.ai/) make sure to change `os.environ['WANDB_API_KEY']={}` and add `--wandb --wandb_project={project_name}` to the commands above.
+Note: If you would like to use [wandb](https://wandb.ai/) make sure to change `os.environ['WANDB_API_KEY']={your_wandb_api_key}` and add `--wandb --wandb_project={project_name}` to the commands above.
