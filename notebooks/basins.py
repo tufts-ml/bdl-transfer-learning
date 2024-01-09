@@ -60,15 +60,6 @@ def interpolate_checkpoints(first_checkpoint, second_checkpoint, n=41):
     return interpolations
 
 if __name__=='__main__':
-    # Learned
-    experiments_path = '/cluster/tufts/hugheslab/eharve06/bdl-transfer-learning/experiments/tuned_CIFAR-10_Copy1'
-    lr_0s = np.logspace(-1, -4, num=4)
-    ns = [1000]
-    prior_scales = np.logspace(0, 4, num=5)
-    prior_type = 'learned'
-    random_states = [1001, 2001, 3001]
-    weight_decays = np.append(np.logspace(-2, -6, num=5), 0)
-    learned_hyperparameters = get_best_hyperparameters(experiments_path, lr_0s, ns, prior_scales, prior_type, random_states, weight_decays)
     # Nonlearned
     experiments_path = '/cluster/tufts/hugheslab/eharve06/bdl-transfer-learning/experiments/tuned_CIFAR-10_Copy1'
     lr_0s = np.logspace(-1, -4, num=4)
@@ -79,21 +70,21 @@ if __name__=='__main__':
     weight_decays = np.append(np.logspace(-2, -6, num=5), 0)
     nonlearned_hyperparameters = get_best_hyperparameters(experiments_path, lr_0s, ns, prior_scales, prior_type, random_states, weight_decays)
     
-    for (learned_index, learned_row), (nonlearned_index, nonlearned_row) in zip(learned_hyperparameters.iterrows(), nonlearned_hyperparameters.iterrows()):
-        # Load learned checkpoint
-        experiments_path = '/cluster/tufts/hugheslab/eharve06/bdl-transfer-learning/experiments/retrained_CIFAR-10_Copy1'
-        model_name = 'learned_lr_0={}_n={}_prior_scale={}_random_state={}_weight_decay={}'\
-        .format(learned_row.lr_0, int(learned_row.n), learned_row.prior_scale, int(learned_row.random_state), learned_row.weight_decay)
-        learned_checkpoint = torch.load('{}/{}.pth'.format(experiments_path, model_name), map_location=torch.device('cpu'))
-        # Load nonlearned checkpoint
+    for (nonlearned_index, nonlearned_row) in nonlearned_hyperparameters.iterrows():
+        num_heads = 10
+        random_state = int(nonlearned_row.random_state)
+        # Finetuned model
         experiments_path = '/cluster/tufts/hugheslab/eharve06/bdl-transfer-learning/experiments/retrained_CIFAR-10_Copy1'
         model_name = 'nonlearned_lr_0={}_n={}_random_state={}_weight_decay={}'\
         .format(nonlearned_row.lr_0, int(nonlearned_row.n), int(nonlearned_row.random_state), nonlearned_row.weight_decay)
-        nonlearned_checkpoint = torch.load('{}/{}.pth'.format(experiments_path, model_name), map_location=torch.device('cpu'))
-
-        interpolations = interpolate_checkpoints(nonlearned_checkpoint, learned_checkpoint)
-        assert int(learned_row.random_state) == int(nonlearned_row.random_state), 'Expected random_state in each row to be the same'
-        random_state = int(learned_row.random_state)
+        finetuned_checkpoint = torch.load('{}/{}.pth'.format(experiments_path, model_name), map_location=torch.device('cpu'))
+        # Pretrained checkpoint
+        prior_path = '/cluster/tufts/hugheslab/eharve06/resnet50_ssl_prior'
+        pretrained_checkpoint = torch.load('{}/resnet50_ssl_prior_model.pt'.format(prior_path), map_location=torch.device('cpu'))
+        pretrained_checkpoint['fc.weight'] = finetuned_checkpoint['fc.weight']
+        pretrained_checkpoint['fc.bias'] = finetuned_checkpoint['fc.bias']
+        interpolations = interpolate_checkpoints(pretrained_checkpoint, finetuned_checkpoint)
+        
         dataset_path = '/cluster/tufts/hugheslab/eharve06/CIFAR-10'
         augmented_train_dataset, train_dataset, val_or_test_dataset = utils.get_cifar10_datasets(root=dataset_path, n=1000, tune=False, random_state=random_state)
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=128)
@@ -101,7 +92,7 @@ if __name__=='__main__':
         
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         model = torchvision.models.resnet50()
-        model.fc = torch.nn.Linear(in_features=2048, out_features=10, bias=True)
+        model.fc = torch.nn.Linear(in_features=2048, out_features=num_heads, bias=True)
         model.to(device)
 
         ce = torch.nn.CrossEntropyLoss()
@@ -120,9 +111,44 @@ if __name__=='__main__':
             
         train_losses = torch.tensor(train_losses)
         val_or_test_losses = torch.tensor(val_or_test_losses)
-        torch.save(train_losses, './nonlearned_train_interpolation_random_state={}.pth'.format(random_state))
-        torch.save(val_or_test_losses, './nonlearned_test_interpolation_random_state={}.pth'.format(random_state))
+        torch.save(train_losses, './nonlearned_train_basin_random_state={}.pth'.format(random_state))
+        torch.save(val_or_test_losses, './nonlearned_test_basin_random_state={}.pth'.format(random_state))
+
+    # Learned
+    experiments_path = '/cluster/tufts/hugheslab/eharve06/bdl-transfer-learning/experiments/tuned_CIFAR-10_Copy1'
+    lr_0s = np.logspace(-1, -4, num=4)
+    ns = [1000]
+    prior_scales = np.logspace(0, 9, num=10)
+    prior_type = 'learned'
+    random_states = [1001, 2001, 3001]
+    weight_decays = np.append(np.logspace(-2, -6, num=5), 0)
+    learned_hyperparameters = get_best_hyperparameters(experiments_path, lr_0s, ns, prior_scales, prior_type, random_states, weight_decays)
+    
+    for (learned_index, learned_row) in learned_hyperparameters.iterrows():
+        num_heads = 10
+        random_state = int(learned_row.random_state)
+        # Finetuned model
+        experiments_path = '/cluster/tufts/hugheslab/eharve06/bdl-transfer-learning/experiments/retrained_CIFAR-10_Copy1'
+        model_name = 'learned_lr_0={}_n={}_prior_scale={}_random_state={}_weight_decay={}'\
+        .format(learned_row.lr_0, int(learned_row.n), learned_row.prior_scale, int(learned_row.random_state), learned_row.weight_decay)
+        finetuned_checkpoint = torch.load('{}/{}.pth'.format(experiments_path, model_name), map_location=torch.device('cpu'))
+        # Pretrained checkpoint
+        prior_path = '/cluster/tufts/hugheslab/eharve06/resnet50_ssl_prior'
+        pretrained_checkpoint = torch.load('{}/resnet50_ssl_prior_model.pt'.format(prior_path), map_location=torch.device('cpu'))
+        pretrained_checkpoint['fc.weight'] = finetuned_checkpoint['fc.weight']
+        pretrained_checkpoint['fc.bias'] = finetuned_checkpoint['fc.bias']
+        interpolations = interpolate_checkpoints(pretrained_checkpoint, finetuned_checkpoint)
         
+        dataset_path = '/cluster/tufts/hugheslab/eharve06/CIFAR-10'
+        augmented_train_dataset, train_dataset, val_or_test_dataset = utils.get_cifar10_datasets(root=dataset_path, n=1000, tune=False, random_state=random_state)
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=128)
+        val_or_test_loader = torch.utils.data.DataLoader(val_or_test_dataset, batch_size=128)
+        
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        model = torchvision.models.resnet50()
+        model.fc = torch.nn.Linear(in_features=2048, out_features=num_heads, bias=True)
+        model.to(device)
+
         prior_path = '/cluster/tufts/hugheslab/eharve06/resnet50_ssl_prior'
         number_of_samples_prior = 5 # Default        
         loc = torch.load('{}/resnet50_ssl_prior_mean.pt'.format(prior_path))
@@ -133,7 +159,7 @@ if __name__=='__main__':
         cov_diag = learned_row.prior_scale * cov_diag + prior_eps # Scale the variance
         ce = torch.nn.CrossEntropyLoss()
         criterion = losses.GaussianPriorCELossShifted(ce, loc.cpu(), cov_factor.t().cpu(), cov_diag.cpu())
-        
+
         train_losses, val_or_test_losses = [], []
         for checkpoint in interpolations:
             model.load_state_dict(checkpoint)
@@ -147,5 +173,5 @@ if __name__=='__main__':
             
         train_losses = torch.tensor(train_losses)
         val_or_test_losses = torch.tensor(val_or_test_losses)
-        torch.save(train_losses, './learned_train_interpolation_random_state={}.pth'.format(random_state))
-        torch.save(val_or_test_losses, './learned_test_interpolation_random_state={}.pth'.format(random_state))
+        torch.save(train_losses, './learned_train_basin_random_state={}.pth'.format(random_state))
+        torch.save(val_or_test_losses, './learned_test_basin_random_state={}.pth'.format(random_state))        

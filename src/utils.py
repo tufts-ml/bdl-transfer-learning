@@ -215,7 +215,7 @@ def train_one_epoch(model, criterion, optimizer, scheduler, dataloader):
         model.zero_grad()
         outputs = model(inputs)
         params = torch.flatten(torch.cat([torch.flatten(p) for p in model.parameters()]))
-        params = params[:criterion.number_of_params].cpu()
+        params = params[:criterion.number_of_params].cpu()        
         metrices = criterion(outputs, targets, N=len(dataloader.dataset), params=params)
         metrices['loss'].backward()
         optimizer.step()

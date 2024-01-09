@@ -88,7 +88,7 @@ if __name__=='__main__':
         optimizer = torch.optim.SGD(model.parameters(), lr=args.lr_0, momentum=0.9, weight_decay=args.weight_decay, nesterov=True)
     elif args.prior_type == 'adapted':
         loc = torch.load('{}/resnet50_ssl_prior_mean.pt'.format(args.prior_path))
-        loc = torch.cat((loc, torch.zeros(num_heads)))
+        loc = torch.cat((loc, torch.zeros((2048*num_heads)+num_heads)))
         criterion = losses.MAPAdaptationCELoss(ce, loc.cpu(), args.weight_decay)
         optimizer = torch.optim.SGD(model.parameters(), lr=args.lr_0, momentum=0.9, weight_decay=0.0, nesterov=True)
     elif args.prior_type == 'learned':
