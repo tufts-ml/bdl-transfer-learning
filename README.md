@@ -10,7 +10,7 @@ TODO: Explain all arguments used in main.py.
 See `bdl-transfer-learning.yml`.
 
 ### Download Shwartz-Ziv et al. (2022)'s SimCLR Resnet-50 prior/initialization
-Shwartz-Ziv et al. (2022)'s pre-trained prior can be found at [https://github.com/hsouri/BayesianTransferLearning].
+Shwartz-Ziv et al. (2022)'s pre-trained prior can be found at https://github.com/hsouri/BayesianTransferLearning.
 
 ### Optimal Hyperparameters
 
