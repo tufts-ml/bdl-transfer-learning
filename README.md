@@ -14,19 +14,19 @@ Shwartz-Ziv et al. (2022)'s pre-trained prior can be found at https://github.com
 
 ### Optimal Hyperparameters
 
-Optimal hyperparameters for standard *transfer learning* with the specified random state.
+Optimal hyperparameters for standard transfer learning with the specified random state.
 
 |    | prior_type   |     n |   lr_0 |   random_state |   weight_decay |
 |---:|:-------------|------:|-------:|---------------:|---------------:|
-|  0 | nonlearned   |    10 | 0.001  |           1001 |         0.01   |
-|  1 | nonlearned   |   100 | 0.001  |           1001 |         0.0001 |
+|  0 | nonlearned   |    10 | 0.01   |           1001 |         0.01   |
+|  1 | nonlearned   |   100 | 0.01   |           1001 |         0.0    |
 |  2 | nonlearned   |  1000 | 0.0001 |           1001 |         0.0001 |
 |  3 | nonlearned   | 10000 | 0.01   |           1001 |         0.001  |
-|  4 | nonlearned   | 50000 | 0.01   |           1001 |         1e-05  |
+|  4 | nonlearned   | 50000 | 0.01   |           1001 |         0.001  |
 
 ### Command Line Input
 
-To evaluate the optimal hyperparameters for standard *transfer learning*, use the following commands with the specified random state:
+To evaluate the optimal hyperparameters for standard transfer learning, use the following commands with the specified random state:
 
 `python CIFAR-10_main.py --dataset_path={dataset_path} --experiments_path={experiments_path} --lr_0=0.001 --model_name='nonlearned_lr_0=0.001_n=10_random_state=1001_weight_decay=0.01' --n=10 --prior_path={prior_path} --prior_type='nonlearned' --random_state=1001 --weight_decay=0.01`
 
