@@ -10,7 +10,7 @@ TODO: Explain all arguments used in main.py.
 See `bdl-transfer-learning.yml`.
 
 ### Download Shwartz-Ziv et al. (2022)'s SimCLR Resnet-50 prior/initialization
-Shwartz-Ziv et al. (2022)'s pre-trained prior can be found at https://github.com/hsouri/BayesianTransferLearning. Make sure to download the folder titled `resnet50_ssl_prior` as this is the prior we use in our paper.
+Shwartz-Ziv et al. (2022)'s pre-trained prior can be found at https://github.com/hsouri/BayesianTransferLearning. Make sure to download `resnet50_ssl_prior` as this is the prior we use in our paper.
 
 ### Optimal Hyperparameters
 
@@ -28,14 +28,14 @@ Optimal hyperparameters for standard transfer learning with the specified random
 
 To evaluate the optimal hyperparameters for standard transfer learning, use the following commands with the specified random state:
 
-`python CIFAR-10_main.py --dataset_path={dataset_path} --experiments_path={experiments_path} --lr_0=0.001 --model_name='nonlearned_lr_0=0.001_n=10_random_state=1001_weight_decay=0.01' --n=10 --prior_path={prior_path} --prior_type='nonlearned' --random_state=1001 --weight_decay=0.01`
+`python CIFAR-10_main.py --dataset_path={dataset_path} --experiments_path={experiments_path} --lr_0=0.01 --model_name='nonlearned_lr_0=0.01_n=10_random_state=1001_weight_decay=0.01' --n=10 --prior_path={prior_path} --prior_type='nonlearned' --random_state=1001 --weight_decay=0.01`
 
-`python CIFAR-10_main.py --dataset_path={dataset_path} --experiments_path={experiments_path} --lr_0=0.001 --model_name='nonlearned_lr_0=0.001_n=100_random_state=1001_weight_decay=0.0001' --n=100 --prior_path={prior_path} --prior_type='nonlearned' --random_state=1001 --weight_decay=0.0001`
+`python CIFAR-10_main.py --dataset_path={dataset_path} --experiments_path={experiments_path} --lr_0=0.001 --model_name='nonlearned_lr_0=0.01_n=100_random_state=1001_weight_decay=0.0' --n=100 --prior_path={prior_path} --prior_type='nonlearned' --random_state=1001 --weight_decay=0.0`
 
 `python CIFAR-10_main.py --dataset_path={dataset_path} --experiments_path={experiments_path} --lr_0=0.0001 --model_name='nonlearned_lr_0=0.0001_n=1000_random_state=1001_weight_decay=0.0001' --n=1000 --prior_path={prior_path} --prior_type='nonlearned' --random_state=1001 --weight_decay=0.0001`
 
 `python CIFAR-10_main.py --dataset_path={dataset_path} --experiments_path={experiments_path} --lr_0=0.01 --model_name='nonlearned_lr_0=0.01_n=10000_random_state=1001_weight_decay=0.001' --n=10000 --prior_path={prior_path} --prior_type='nonlearned' --random_state=1001 --weight_decay=0.001`
 
-`python CIFAR-10_main.py --dataset_path={dataset_path} --experiments_path={experiments_path} --lr_0=0.01 --model_name='nonlearned_lr_0=0.01_n=50000_random_state=1001_weight_decay=1e-05' --n=50000 --prior_path={prior_path} --prior_type='nonlearned' --random_state=1001 --weight_decay=1e-05`
+`python CIFAR-10_main.py --dataset_path={dataset_path} --experiments_path={experiments_path} --lr_0=0.01 --model_name='nonlearned_lr_0=0.01_n=50000_random_state=1001_weight_decay=0.001' --n=50000 --prior_path={prior_path} --prior_type='nonlearned' --random_state=1001 --weight_decay=0.001`
 
 Note: If you would like to use [wandb](https://wandb.ai/) make sure to change `os.environ['WANDB_API_KEY']={your_wandb_api_key}` and add `--wandb --wandb_project={project_name}` to the commands above.
