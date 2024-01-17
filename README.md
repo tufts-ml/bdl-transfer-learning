@@ -5,7 +5,7 @@
 TODO: Explain all arguments used in main.py.
 * ```dataset_path``` - path to the folder where the dataset will be downloaded to during the first run and loaded from during later runs.
 * ```experiments_path``` - path to the folder where the results will be stored.
-* ```model_name``` - name of the experiment. Will be saved as "model_name".csv/"model_name".pth into "experiments_path".
+* ```model_name``` - name of the experiment. Experiments will be saved as "model_name".csv/"model_name".pth into "experiments_path".
 * ```save``` - flag to save the model at the end of the training.
 * ```tune``` - flag to generate and use validation set. Used for hyperparameter search.
 * ```wandb``` - flag to load the results to [Wandb](https://wandb.ai/site). TODO: Make it possible to log i from other accounts.
