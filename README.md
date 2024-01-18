@@ -6,7 +6,7 @@
 * ```model_name``` - name of the experiment. Experiments will be saved as "model_name".csv/"model_name".pth into "experiments_path".
 * ```save``` - flag to save the model at the end of the training.
 * ```tune``` - flag to generate and use validation set. Used for hyperparameter search.
-* ```wandb``` - flag to load the results to [Wandb](https://wandb.ai/site). TODO: Make it possible to log i from other accounts.
+* ```wandb``` - flag to load the results to [Wandb](https://wandb.ai/site). Note: If you would like to use [wandb](https://wandb.ai/) make sure to change `os.environ['WANDB_API_KEY']={your_wandb_api_key}` and add `--wandb --wandb_project={project_name}` to the commands above.
 * ```wandb_project``` - name of the Wandb project where the results will be saved. The results will be saved under "model_name".
 * ```batch_size``` - batch size.
 * ```lr_0``` - learning rate.
