@@ -74,7 +74,6 @@ if __name__=='__main__':
     
     ce = torch.nn.CrossEntropyLoss()
     num_heads = 10
-    # Load model
     checkpoint = torch.load('{}/resnet50_torchvision_model.pt'.format(args.prior_path), map_location=torch.device('cpu'))
     model = torchvision.models.resnet50() # Define model
     model.fc = torch.nn.Identity() # Get the classification head off

@@ -74,7 +74,6 @@ if __name__=='__main__':
     
     ce = torch.nn.CrossEntropyLoss()
     num_heads = 4
-    # Load model
     checkpoint = torch.load(f'{args.prior_path}/resnet50_ssl_prior_model.pt', map_location=torch.device('cpu'))
     model = torchvision.models.resnet50() # Define model
     model.fc = torch.nn.Identity() # Get the classification head off
