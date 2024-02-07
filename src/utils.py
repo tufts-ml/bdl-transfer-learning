@@ -86,8 +86,8 @@ def get_oxford_pets_datasets(root, n, tune=True, random_state=42):
 
 def get_ham10000_datasets(root, n, tune=True, random_state=42):
     # Load HAM10000 datasets (see HAM10000.ipynb to create labels.csv)
-    ham10000_train_df = pd.read_csv(os.path.join(root, 'train/labels.csv'), index_col='lesion_id')
-    ham10000_test_df = pd.read_csv(os.path.join(root, 'test/labels.csv'), index_col='lesion_id')
+    ham10000_train_df = pd.read_csv(f'{root}/train/labels.csv', index_col='lesion_id')
+    ham10000_test_df = pd.read_csv(f'{root}/test/labels.csv', index_col='lesion_id')
     ham10000_train_df.label = ham10000_train_df.label.apply(lambda item: ast.literal_eval(item))
     ham10000_test_df.label = ham10000_test_df.label.apply(lambda item: ast.literal_eval(item))
     # Randomly sample n datapoints from HAM10000 training DataFrame
@@ -149,7 +149,7 @@ def get_cifar10_datasets(root, n, tune=True, random_state=42):
     if not hasattr(random_state, 'rand'):
         raise ValueError('Not a valid random number generator')
         
-    assert n%50 == 0 or n == 10, 'Invalid number of samples n={}'.format(n)
+    assert n in [10, 100, 1000, 10000, 50000], f'Invalid number of samples n={n}.'
     # Load CIFAR-10 datasets
     cifar10_train_dataset = torchvision.datasets.CIFAR10(root=root, train=True, download=True)
     cifar10_test_dataset = torchvision.datasets.CIFAR10(root=root, train=False, download=True)
@@ -218,6 +218,7 @@ def train_one_epoch(model, criterion, optimizer, scheduler, dataloader):
         params = params[:criterion.number_of_params].cpu()        
         metrices = criterion(outputs, targets, N=len(dataloader.dataset), params=params)
         metrices['loss'].backward()
+        #torch.nn.utils.clip_grad_norm_(model.parameters(), 2.0)
         optimizer.step()
         lrs.append(scheduler.get_last_lr()[0])
         scheduler.step()
@@ -234,7 +235,7 @@ def evaluate(model, criterion, dataloader, metric='accuracy', num_classes=10):
     elif metric == 'auroc':
         acc = torchmetrics.AUROC(task='multiclass', num_classes=num_classes, average='macro')
     else:
-        raise NotImplementedError('The specified metric \'{}\' is not implemented.'.format(metric))
+        raise NotImplementedError(f'The specified metric \'{metric}\' is not implemented.')
     
     outputs_list, targets_list = [], []
     running_loss, running_nll, running_prior = 0.0, 0.0, 0.0
