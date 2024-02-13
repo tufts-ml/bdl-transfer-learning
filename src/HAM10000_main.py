@@ -49,7 +49,8 @@ if __name__=='__main__':
     
     if args.wandb:
         wandb.login()
-        os.environ['WANDB_API_KEY'] = '4bfaad8bea054341b5e8729c940150221bdfbb6c'
+        ### TODO: insert WANDB key
+        os.environ['WANDB_API_KEY'] = ''
         wandb.init(
             project = args.wandb_project,
             name = args.model_name,
