@@ -59,7 +59,7 @@ def interpolate_checkpoints(first_checkpoint, second_checkpoint, n=41):
 
 if __name__=='__main__':
     # Nonlearned
-    experiments_path = '/cluster/tufts/hugheslab/eharve06/bdl-transfer-learning/experiments/tuned_CIFAR-10_Copy1'
+    experiments_path = ''
     lr_0s = np.logspace(-1, -4, num=4)
     ns = [1000]
     prior_scales = [None]
@@ -72,17 +72,17 @@ if __name__=='__main__':
         num_heads = 10
         random_state = int(nonlearned_row.random_state)
         # Finetuned model
-        experiments_path = '/cluster/tufts/hugheslab/eharve06/bdl-transfer-learning/experiments/retrained_CIFAR-10_Copy1'
+        experiments_path = ''
         model_name = f'nonlearned_lr_0={nonlearned_row.lr_0}_n={nonlearned_row.n}_random_state={nonlearned_row.random_state}_weight_decay={nonlearned_row.weight_decay}'
         finetuned_checkpoint = torch.load(f'{experiments_path}/{model_name}.pth', map_location=torch.device('cpu'))
         # Pretrained checkpoint
-        prior_path = '/cluster/tufts/hugheslab/eharve06/resnet50_ssl_prior'
+        prior_path = ''
         pretrained_checkpoint = torch.load(f'{prior_path}/resnet50_ssl_prior_model.pt', map_location=torch.device('cpu'))
         pretrained_checkpoint['fc.weight'] = finetuned_checkpoint['fc.weight']
         pretrained_checkpoint['fc.bias'] = finetuned_checkpoint['fc.bias']
         interpolations = interpolate_checkpoints(pretrained_checkpoint, finetuned_checkpoint)
         
-        dataset_path = '/cluster/tufts/hugheslab/eharve06/CIFAR-10'
+        dataset_path = ''
         augmented_train_dataset, train_dataset, val_or_test_dataset = utils.get_cifar10_datasets(root=dataset_path, n=1000, tune=False, random_state=random_state)
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=128)
         val_or_test_loader = torch.utils.data.DataLoader(val_or_test_dataset, batch_size=128)
@@ -112,7 +112,7 @@ if __name__=='__main__':
         torch.save(val_or_test_losses, f'./nonlearned_test_basin_random_state={random_state}.pth')
 
     # Learned
-    experiments_path = '/cluster/tufts/hugheslab/eharve06/bdl-transfer-learning/experiments/tuned_CIFAR-10_Copy1'
+    experiments_path = ''
     lr_0s = np.logspace(-1, -4, num=4)
     ns = [1000]
     prior_scales = np.logspace(0, 9, num=10)
@@ -125,17 +125,17 @@ if __name__=='__main__':
         num_heads = 10
         random_state = int(learned_row.random_state)
         # Finetuned model
-        experiments_path = '/cluster/tufts/hugheslab/eharve06/bdl-transfer-learning/experiments/retrained_CIFAR-10_Copy1'
+        experiments_path = ''
         model_name = f'learned_lr_0={learned_row.lr_0}_n={learned_row.n}_prior_scale={learned_row.prior_scale}_random_state={learned_row.random_state}_weight_decay={learned_row.weight_decay}'
         finetuned_checkpoint = torch.load(f'{experiments_path}/{model_name}.pth', map_location=torch.device('cpu'))
         # Pretrained checkpoint
-        prior_path = '/cluster/tufts/hugheslab/eharve06/resnet50_ssl_prior'
+        prior_path = ''
         pretrained_checkpoint = torch.load(f'{prior_path}/resnet50_ssl_prior_model.pt', map_location=torch.device('cpu'))
         pretrained_checkpoint['fc.weight'] = finetuned_checkpoint['fc.weight']
         pretrained_checkpoint['fc.bias'] = finetuned_checkpoint['fc.bias']
         interpolations = interpolate_checkpoints(pretrained_checkpoint, finetuned_checkpoint)
         
-        dataset_path = '/cluster/tufts/hugheslab/eharve06/CIFAR-10'
+        dataset_path = ''
         augmented_train_dataset, train_dataset, val_or_test_dataset = utils.get_cifar10_datasets(root=dataset_path, n=1000, tune=False, random_state=random_state)
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=128)
         val_or_test_loader = torch.utils.data.DataLoader(val_or_test_dataset, batch_size=128)
@@ -145,7 +145,7 @@ if __name__=='__main__':
         model.fc = torch.nn.Linear(in_features=2048, out_features=num_heads, bias=True)
         model.to(device)
 
-        prior_path = '/cluster/tufts/hugheslab/eharve06/resnet50_ssl_prior'
+        prior_path = ''
         number_of_samples_prior = 5 # Default        
         loc = torch.load(f'{prior_path}/resnet50_ssl_prior_mean.pt')
         cov_factor = torch.load(f'{prior_path}/resnet50_ssl_prior_covmat.pt')
