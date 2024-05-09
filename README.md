@@ -13,5 +13,4 @@ Shwartz-Ziv et al. (2022)'s pre-trained prior can be found at https://github.com
 
 ## Downloading our experiments
 
-
 ## Citation
