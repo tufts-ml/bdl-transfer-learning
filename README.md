@@ -9,7 +9,7 @@ Figure 1: Error rate (lower is better) vs. target train set size on CIFAR-10, fo
 See `bdl-transfer-learning.yml`.
 
 ## Downloading Shwartz-Ziv et al. (2022)'s SimCLR ResNet-50 prior/initialization
-Shwartz-Ziv et al. (2022)'s pre-trained prior can be found at https://github.com/hsouri/BayesianTransferLearning. In our paper, we use `resnet50_ssl_prior`.
+Shwartz-Ziv et al. (2022)’s SimCLR snapshots can be found at https://github.com/hsouri/BayesianTransferLearning
 
 ## Downloading our experiments
 Our experiments can be found at https://tufts.box.com/v/bdl-transfer-learning.
