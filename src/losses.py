@@ -1,48 +1,96 @@
-from torch.distributions.lowrank_multivariate_normal import LowRankMultivariateNormal
+import numpy as np
+# PyTorch
 import torch
 import torch.nn as nn
-
-class CustomCELoss(nn.Module):
-    def __init__(self, ce):
-        super().__init__()
-        self.ce = ce
-        self.number_of_params = 0
-
-    def forward(self, logits, targets, N=None, params=None):
-        nll = self.ce(logits, targets)
-        matrices = {'loss': nll, 'nll': nll, 'prior': torch.tensor(0.0)}
-        return matrices
-
-class GaussianPriorCELossShifted(nn.Module):    
-    def __init__(self, ce, loc, cov_factor, cov_diag):
-        super().__init__()
-        self.ce = ce
-        self.number_of_params = loc.shape[0]
-        self.mvn = LowRankMultivariateNormal(loc=loc, cov_factor=cov_factor, cov_diag=cov_diag)
+from torch.distributions.lowrank_multivariate_normal import LowRankMultivariateNormal
     
-    def log_prob(self, params):
-        return self.mvn.log_prob(params)
-
-    def forward(self, logits, targets, N, params):
-        nll = self.ce(logits, targets)
-        log_prior_value = self.log_prob(params).sum() / N
-        log_prior_value = torch.clamp(log_prior_value, min=-1e20, max=1e20)
-        ne_en = nll - log_prior_value # Negative energy
-        matrices = {'loss': ne_en, 'nll': nll, 'prior': log_prior_value}
-        return matrices
-    
-class MAPAdaptationCELoss(nn.Module):
-    def __init__(self, ce, loc, weight_decay):
+class CustomCrossEntropyLoss(nn.Module):
+    def __init__(self, criterion=nn.CrossEntropyLoss()):
         super().__init__()
-        self.ce = ce
-        self.loc = loc
-        self.number_of_params = loc.shape[0]
+        self.d = 0 # Number of backbone parameters
+        self.criterion = criterion
+
+    def forward(self, logits, labels, bb_params, clf_params):
+        nll = self.criterion(logits, labels)
+        losses = {'loss': nll, 'nll': nll, 'bb_log_prior': torch.tensor(0.0), 'clf_log_prior': torch.tensor(0.0)}
+        return losses
+    
+class L2NormLoss(nn.Module):
+    def __init__(self, weight_decay, criterion=nn.CrossEntropyLoss()):
+        super().__init__()
         self.weight_decay = weight_decay
+        self.d = 0 # Number of backbone parameters
+        self.criterion = criterion
 
-    def forward(self, logits, targets, N, params):
-        nll = self.ce(logits, targets)
-        regularizer = (1/len(logits)) * (self.weight_decay/2) * torch.sum((params-self.loc)**2)
-        regularizer = torch.clamp(regularizer, min=-1e20, max=1e20)
-        loss = nll + regularizer
-        matrices = {'loss': loss, 'nll': nll, 'prior': regularizer}
-        return matrices
+    def forward(self, logits, labels, bb_params, clf_params):
+        nll = self.criterion(logits, labels)
+        clf_log_prior = self.weight_decay * (clf_params**2).sum()/2
+        clf_log_prior = torch.clamp(clf_log_prior, min=-1e20, max=1e20)
+        loss = nll + clf_log_prior
+        losses = {'loss': loss, 'nll': nll, 'bb_log_prior': torch.tensor(0.0), 'clf_log_prior': clf_log_prior}
+        return losses
+    
+class MAPAdaptationLoss(nn.Module):
+    def __init__(self, loc, weight_decay, criterion=nn.CrossEntropyLoss()):
+        super().__init__()
+        self.loc = loc
+        self.weight_decay = weight_decay
+        self.d = 0 # Number of backbone parameters
+        self.criterion = criterion
+
+    def forward(self, logits, labels, bb_params, clf_params):
+        nll = self.criterion(logits, labels)
+        clf_log_prior = self.weight_decay * ((clf_params-self.loc.to(clf_params.device))**2).sum()/2
+        clf_log_prior = torch.clamp(clf_log_prior, min=-1e20, max=1e20)
+        loss = nll + clf_log_prior
+        losses = {'loss': loss, 'nll': nll, 'bb_log_prior': torch.tensor(0.0), 'clf_log_prior': clf_log_prior}
+        return losses
+        
+class MAPTransferLearning(nn.Module):
+    # Note: There are more effient ways to train StdPrior, LearnedPriorIso, and LearnedPriorLR. Our implementation focuses on making the template for our probabilistic model easy to read.
+    def __init__(
+        self, 
+        bb_prior, # Backbone prior dictionary
+        bb_weight_decay, # Backbone weight decay
+        clf_prior, # Classifier prior dictionary
+        clf_weight_decay, # Classifier weight decay
+        device, 
+        n, # Training set size
+        criterion=nn.CrossEntropyLoss()
+    ):        
+        assert all(item in bb_prior for item in ['cov_diag', 'cov_factor', 'loc']), 'Backbone prior dictionary must include \'cov_diag\', \'cov_factor\', and \'loc\''
+        assert all(item in clf_prior for item in ['cov_diag', 'cov_factor', 'loc']), 'Classifier prior dictionary must include \'cov_diag\', \'cov_factor\', and \'loc\''
+        super().__init__()
+                                        
+        # Backbone multivariate Normal
+        if bb_weight_decay != 0:
+            self.bb_mvn = LowRankMultivariateNormal(
+                loc=(bb_prior['loc']).to(device), 
+                cov_factor=(np.sqrt(bb_weight_decay)*bb_prior['cov_factor'].t()).to(device), 
+                cov_diag=(bb_weight_decay*bb_prior['cov_diag']).to(device) if 'prior_eps' not in bb_prior else (bb_weight_decay*bb_prior['cov_diag']+bb_prior['prior_eps']).to(device)
+            )
+        else:
+            self.bb_mvn = None
+        # Classifier multivariate Normal
+        if clf_weight_decay != 0:
+            self.clf_mvn = LowRankMultivariateNormal(
+                loc=(clf_prior['loc']).to(device), 
+                cov_factor=(np.sqrt(clf_weight_decay)*clf_prior['cov_factor'].t()).to(device), 
+                cov_diag=(clf_weight_decay*clf_prior['cov_diag']).to(device)
+            )
+        else:
+            self.clf_mvn = None
+            
+        self.d = len(bb_prior['loc']) # Number of backbone parameters
+        self.n = n
+        self.criterion = criterion
+        
+    def forward(self, logits, labels, bb_params, clf_params):
+        nll = self.criterion(logits, labels)
+        bb_log_prior = torch.zeros_like(nll).to(nll.device) if self.bb_mvn is None else self.bb_mvn.log_prob(bb_params).sum()/self.n
+        clf_log_prior = torch.zeros_like(nll).to(nll.device) if self.clf_mvn is None else self.clf_mvn.log_prob(clf_params).sum()/self.n
+        bb_log_prior = torch.clamp(bb_log_prior, min=-1e20, max=1e20)
+        clf_log_prior = torch.clamp(clf_log_prior, min=-1e20, max=1e20)
+        loss = nll - clf_log_prior - bb_log_prior
+        losses = {'loss': loss, 'nll': nll, 'bb_log_prior': bb_log_prior, 'clf_log_prior': clf_log_prior}
+        return losses

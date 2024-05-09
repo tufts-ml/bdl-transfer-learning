@@ -1,88 +1,267 @@
 import os
 import ast
 import copy
-import re
 import numpy as np
 import pandas as pd
 # PyTorch
 import torch
-from torch.utils.data import Dataset
 import torchvision
-from torchvision.io import read_image
-import torchvision.transforms as transforms
 import torchmetrics
-from torchvision.datasets.utils import download_and_extract_archive
 # Importing our custom module(s)
 import folds
 
 def makedir_if_not_exist(directory):
     if not os.path.exists(directory):
         os.makedirs(directory)
+        
+class Dataset(torch.utils.data.Dataset):
+    def __init__(self, X, y, transform=None):
+        self.X = X
+        self.y = y
+        self.transform = transform
 
-def get_oxford_pets_datasets(root, n, tune=True, random_state=42):
-    if not os.path.exists(os.path.join(root, 'annotations/')):
-        URL = "https://www.robots.ox.ac.uk/~vgg/data/pets/data/annotations.tar.gz"
-        download_and_extract_archive(URL, root)
-    if not os.path.exists(os.path.join(root, 'images/')):
-        URL = "https://www.robots.ox.ac.uk/~vgg/data/pets/data/images.tar.gz"
-        download_and_extract_archive(URL, root)
-    # Read annotations into dataframes 
-    df_trainval = pd.read_csv(os.path.join(root, 'annotations/trainval.txt'),sep=' ',names=['image','id','species','breed_id'])
-    n = int(n/df_trainval.id.max()) # number of images per class
-    df_test = pd.read_csv(os.path.join(root, 'annotations/test.txt'),sep=' ',names=['image','id','species','breed_id'])
-    # Add file paths to dataframe 
-    df_trainval['path'] = df_trainval['image'].apply(lambda image: os.path.join(root, 'images/{}.jpg'.format(image)))
-    df_test['path'] = df_test['image'].apply(lambda image: os.path.join(root, 'images/{}.jpg'.format(image)))
+    def __len__(self):
+        return len(self.X)
+
+    def __getitem__(self, index):
+        return (self.X[index], self.y[index]) if self.transform == None else (self.transform(self.X[index]), self.y[index])
+
+def get_cifar10_datasets(root, n, tune=True, random_state=42):
+    assert n in [10, 100, 1000, 10000, 50000], f'Invalid number of samples n={n}.'
+
+    if random_state is None:
+        random_state = np.random
+    elif isinstance(random_state, int):
+        random_state = np.random.RandomState(int(random_state))
+    if not hasattr(random_state, 'rand'):
+        raise ValueError('Not a valid random number generator')
     
-    if n==1: ## if one per class
-        if tune:
-            df_sampled = df_trainval.groupby('id').apply(lambda x: x.sample(n=n, random_state=random_state)).reset_index(drop=True)
-            ### 4/5 of the sampled data for training
-            df_train_sampled = df_sampled.sample(n=int(np.ceil(4/5*37*n)), random_state=random_state).reset_index(drop=True)
-            ### remaining 1/5 of the sampled data for validation
-            df_val_or_test_sampled = df_sampled[~df_sampled.index.isin(df_train_sampled.index)]
-            #### Reset indices
-            df_train_sampled = df_train_sampled.reset_index(drop=True)
-            df_val_or_test_sampled = df_val_or_test_sampled.reset_index(drop=True)
-            print(df_train_sampled.shape,df_val_or_test_sampled.shape)
+    transform = torchvision.transforms.Compose([torchvision.transforms.ToTensor()])
+    cifar10_train_dataset = torchvision.datasets.CIFAR10(root=root, train=True, transform=transform, download=True)
+    cifar10_test_dataset = torchvision.datasets.CIFAR10(root=root, train=False, transform=transform, download=True)
+
+    class_indices = {cifar10_label: [idx for idx, (image, label) in enumerate(cifar10_train_dataset) if label == cifar10_label] for cifar10_label in range(10)}
+    shuffled_sampled_class_indices = {cifar10_label: random_state.choice(class_indices[cifar10_label], int(n/10), replace=False) for cifar10_label in class_indices.keys()}
+    
+    if tune:
+        if n == 10:
+            mask = random_state.choice([True, True, True, True, False]*2, 10, replace=False)
+            train_indices = np.array(list(shuffled_sampled_class_indices.values())).flatten()[mask]
+            val_or_test_indices = np.array(list(shuffled_sampled_class_indices.values())).flatten()[~mask]
         else:
-            df_train_sampled = df_trainval.groupby('id').apply(lambda x: x.sample(n=n, random_state=random_state)).reset_index(drop=True)
-            df_val_or_test_sampled = df_test
+            train_indices = {cifar10_label: shuffled_sampled_class_indices[cifar10_label][:int(4/5*int(n/10))] for cifar10_label in shuffled_sampled_class_indices.keys()}
+            val_or_test_indices = {cifar10_label: shuffled_sampled_class_indices[cifar10_label][int(4/5*int(n/10)):] for cifar10_label in shuffled_sampled_class_indices.keys()}
+            train_indices = np.array(list(train_indices.values())).flatten()
+            val_or_test_indices = np.array(list(val_or_test_indices.values())).flatten()  
     else:
-        if tune:
-            df_train_sampled = df_trainval.groupby('id').apply(lambda x: x.sample(n=n, random_state=random_state)[:int(np.ceil(4/5*n))]).reset_index(drop=True)
-            df_val_or_test_sampled = df_trainval.groupby('id').apply(lambda x: x.sample(n=n, random_state=random_state)[int(np.ceil(4/5*n)):]).reset_index(drop=True)
-        else:
-            df_train_sampled = df_trainval.groupby('id').apply(lambda x: x.sample(n=n, random_state=random_state)).reset_index(drop=True)
-            df_val_or_test_sampled = df_test
-    
-    # For Oxford Pets we resize images before normalizing since images are different sizes
-    transform = transforms.Resize(size=(256, 256))
-    # # Some of the images have 4 channels RGBA. We ignore the last channel.
-    sampled_train_images = torch.stack([transform(read_image(path).float()[:3,:,:])/255 for path in df_train_sampled.path])
-    sampled_val_or_test_images = torch.stack([transform(read_image(path).float()[:3,:,:])/255 for path in df_val_or_test_sampled.path])
-    
-    sampled_train_labels = torch.tensor([label-1 for label in df_train_sampled.id]).squeeze()
-    train_mean = torch.mean(sampled_train_images, axis=(0, 2, 3))
-    train_std = torch.std(sampled_train_images, axis=(0, 2, 3))
-    sampled_val_or_test_labels = torch.tensor([label-1 for label in df_val_or_test_sampled.id]).squeeze()
+        train_indices = np.array(list(shuffled_sampled_class_indices.values())).flatten()
 
-    train_transform = torchvision.transforms.Compose([
-        torchvision.transforms.Normalize(mean=train_mean, std=train_std),
+    sampled_train_images = torch.stack([cifar10_train_dataset[index][0] for index in train_indices])
+    sampled_train_labels = torch.tensor([cifar10_train_dataset[index][1] for index in train_indices])
+    mean = torch.mean(sampled_train_images, axis=(0, 2, 3))
+    std = torch.std(sampled_train_images, axis=(0, 2, 3))
+    augmented_transform = torchvision.transforms.Compose([
+        torchvision.transforms.Normalize(mean=mean, std=std),
+        torchvision.transforms.Resize(size=(256, 256)),
         torchvision.transforms.RandomCrop(size=(224, 224)),
         torchvision.transforms.RandomHorizontalFlip(),
     ])
-    val_or_test_transform = torchvision.transforms.Compose([
-        torchvision.transforms.Normalize(mean=train_mean, std=train_std),
+    transform = torchvision.transforms.Compose([
+        torchvision.transforms.Normalize(mean=mean, std=std),
+        torchvision.transforms.Resize(size=(256, 256)),
+        torchvision.transforms.CenterCrop(size=(224, 224)),
+    ])
+    
+    if tune:
+        val_or_test_dataset = [cifar10_train_dataset[index] for index in val_or_test_indices]
+    else:
+        val_or_test_dataset = cifar10_test_dataset
+    
+    sampled_val_or_test_images = torch.stack([image for image, label in val_or_test_dataset])
+    sampled_val_or_test_labels = torch.tensor([label for image, label in val_or_test_dataset])
+
+    augmented_train_dataset = Dataset(sampled_train_images, sampled_train_labels, augmented_transform)
+    train_dataset = Dataset(sampled_train_images, sampled_train_labels, transform)
+    val_or_test_dataset = Dataset(sampled_val_or_test_images, sampled_val_or_test_labels, transform)
+                
+    return augmented_train_dataset, train_dataset, val_or_test_dataset
+
+def get_oxford_flowers_datasets(root, n, tune=True, random_state=42):
+
+    if random_state is None:
+        random_state = np.random
+    elif isinstance(random_state, int):
+        random_state = np.random.RandomState(int(random_state))
+    if not hasattr(random_state, 'rand'):
+        raise ValueError('Not a valid random number generator')
+
+    transform = torchvision.transforms.Compose([torchvision.transforms.ToTensor()])
+    oxflowers_train_dataset = torchvision.datasets.Flowers102(root=root, split='train', transform=transform, download=True)
+    oxflowers_test_dataset = torchvision.datasets.Flowers102(root=root, split='test', transform=transform, download=True)
+
+    class_indices = {oxfl_label: [np.where(np.array(oxflowers_train_dataset._labels)==oxfl_label)[0]] for oxfl_label in range(102)}
+    shuffled_sampled_class_indices = {oxfl_label: [random_state.choice(class_indices[oxfl_label][0], int(n/102), replace=False)] for oxfl_label in range(102)}
+
+    if tune:
+        if n == 102:
+            mask = random_state.choice([True]*82 + [False]*20, 102, replace=False)
+            train_indices = np.array(list(shuffled_sampled_class_indices.values())).flatten()[mask]
+            val_or_test_indices = np.array(list(shuffled_sampled_class_indices.values())).flatten()[~mask]
+        else:
+            train_indices = {oxfl_label: shuffled_sampled_class_indices[oxfl_label][0][:int(4/5*int(n/102))] for oxfl_label in shuffled_sampled_class_indices.keys()}
+            val_or_test_indices = {oxfl_label: shuffled_sampled_class_indices[oxfl_label][0][int(4/5*int(n/102)):] for oxfl_label in shuffled_sampled_class_indices.keys()}
+            train_indices = np.array(list(train_indices.values())).flatten()
+            val_or_test_indices = np.array(list(val_or_test_indices.values())).flatten()  
+    else:
+        train_indices = np.array(list(shuffled_sampled_class_indices.values())).flatten()
+
+    # For Oxford Flowers we resize images before normalizing since images are different sizes
+    resize = torchvision.transforms.Resize(size=(256, 256))
+    sampled_train_images = torch.stack([resize(torchvision.io.read_image(str(oxflowers_train_dataset._image_files[ind])).float())/255 for ind in train_indices])
+    sampled_train_labels = torch.tensor([oxflowers_train_dataset._labels[ind] for ind in train_indices]).squeeze()
+
+    mean = torch.mean(sampled_train_images, axis=(0, 2, 3))
+    std = torch.std(sampled_train_images, axis=(0, 2, 3))
+    augmented_transform = torchvision.transforms.Compose([
+        torchvision.transforms.Normalize(mean=mean, std=std),
+        torchvision.transforms.RandomCrop(size=(224, 224)),
+        torchvision.transforms.RandomHorizontalFlip(),
+    ])
+    transform = torchvision.transforms.Compose([
+        torchvision.transforms.Normalize(mean=mean, std=std),
+        torchvision.transforms.CenterCrop(size=(224, 224)),
+    ])
+    
+    if tune:
+        sampled_val_or_test_images = torch.stack([resize(torchvision.io.read_image(str(oxflowers_train_dataset._image_files[ind])).float())/255 for ind in val_or_test_indices])
+        sampled_val_or_test_labels = torch.tensor([oxflowers_train_dataset._labels[ind] for ind in val_or_test_indices]).squeeze()
+    else:
+        sampled_val_or_test_images = torch.stack([resize(torchvision.io.read_image(str(path)).float())/255 for path in oxflowers_test_dataset._image_files])
+        sampled_val_or_test_labels = torch.tensor([oxflowers_test_dataset._labels]).squeeze()  
+
+    augmented_train_dataset = Dataset(sampled_train_images, sampled_train_labels, augmented_transform)
+    train_dataset = Dataset(sampled_train_images, sampled_train_labels, transform)
+    val_or_test_dataset = Dataset(sampled_val_or_test_images, sampled_val_or_test_labels, transform)
+                
+    return augmented_train_dataset, train_dataset, val_or_test_dataset
+
+def get_oxford_pets_datasets(root, n, tune=True, random_state=42):
+    assert n in [37, 370, 3441], f'Invalid number of samples n={n}.'
+
+    if not os.path.exists(f'{root}/annotations'):
+        URL = "https://www.robots.ox.ac.uk/~vgg/data/pets/data/annotations.tar.gz"
+        torchvision.datasets.utils.download_and_extract_archive(URL, root)
+    if not os.path.exists(f'{root}/images'):
+        URL = "https://www.robots.ox.ac.uk/~vgg/data/pets/data/images.tar.gz"
+        torchvision.datasets.utils.download_and_extract_archive(URL, root)
+        
+    # Read annotations into dataframes 
+    trainval_df = pd.read_csv(f'{root}/annotations/trainval.txt', sep=' ', names=['image', 'id', 'species', 'breed_id'])
+    test_df = pd.read_csv(f'{root}/annotations/test.txt', sep=' ', names=['image', 'id', 'species', 'breed_id'])
+    # Add file paths to dataframe 
+    trainval_df['path'] = trainval_df['image'].apply(lambda image: f'{root}/images/{image}.jpg')
+    test_df['path'] = test_df['image'].apply(lambda image: f'{root}/images/{image}.jpg')
+    
+    if tune:
+        if n == 37:
+            sampled_df = trainval_df.groupby('id').apply(lambda group: group.sample(n=int(n/37), random_state=random_state)).reset_index(drop=True)
+            # Sample 4/5 of trainval_df for training
+            sampled_train_df = sampled_df.sample(n=int(4/5*n), random_state=random_state).reset_index(drop=True)
+            # Use remaining 1/5 of trainval_df for validation
+            sampled_val_or_test_df = sampled_df[~sampled_df.index.isin(sampled_train_df.index)]
+            # Reset indices
+            sampled_train_df = sampled_train_df.reset_index(drop=True)
+            sampled_val_or_test_df = sampled_val_or_test_df.reset_index(drop=True)
+        else:
+            sampled_train_df = trainval_df.groupby('id').apply(lambda group: group.sample(n=int(n/37), random_state=random_state)[:int(4/5*int(n/37))]).reset_index(drop=True)
+            sampled_val_or_test_df = trainval_df.groupby('id').apply(lambda group: group.sample(n=int(n/37), random_state=random_state)[int(4/5*int(n/37)):]).reset_index(drop=True)
+    else:
+        sampled_train_df = trainval_df.groupby('id').apply(lambda group: group.sample(n=int(n/37), random_state=random_state)).reset_index(drop=True)
+        sampled_val_or_test_df = test_df
+    
+    # For Oxford-IIIT Pets we resize images before normalizing since images are different sizes
+    resize = torchvision.transforms.Resize(size=(256, 256))
+    # Some of the images have 4 channels (RGBA). We ignore the last channel.
+    sampled_train_images = torch.stack([resize(torchvision.io.read_image(path).float()[:3,:,:])/255 for path in sampled_train_df.path])
+    sampled_train_labels = torch.tensor([label-1 for label in sampled_train_df.id]).squeeze()
+    mean = torch.mean(sampled_train_images, axis=(0, 2, 3))
+    std = torch.std(sampled_train_images, axis=(0, 2, 3))
+    augmented_transform = torchvision.transforms.Compose([
+        torchvision.transforms.Normalize(mean=mean, std=std),
+        torchvision.transforms.RandomCrop(size=(224, 224)),
+        torchvision.transforms.RandomHorizontalFlip(),
+    ])
+    transform = torchvision.transforms.Compose([
+        torchvision.transforms.Normalize(mean=mean, std=std),
+        torchvision.transforms.CenterCrop(size=(224, 224)),
+    ])
+    
+    sampled_val_or_test_images = torch.stack([resize(torchvision.io.read_image(path).float()[:3,:,:])/255 for path in sampled_val_or_test_df.path])
+    sampled_val_or_test_labels = torch.tensor([label-1 for label in sampled_val_or_test_df.id]).squeeze()
+
+    augmented_train_dataset = Dataset(sampled_train_images, sampled_train_labels, augmented_transform)
+    train_dataset = Dataset(sampled_train_images, sampled_train_labels, transform)
+    val_or_test_dataset = Dataset(sampled_val_or_test_images, sampled_val_or_test_labels, transform)
+    return augmented_train_dataset, train_dataset, val_or_test_dataset
+
+def get_aircrafts_datasets(root, n, tune=True, random_state=42):
+
+    if random_state is None:
+        random_state = np.random
+    elif isinstance(random_state, int):
+        random_state = np.random.RandomState(int(random_state))
+    if not hasattr(random_state, 'rand'):
+        raise ValueError('Not a valid random number generator')
+
+    transform = torchvision.transforms.Compose([torchvision.transforms.ToTensor()])
+    aircraft_train_dataset = torchvision.datasets.FGVCAircraft(root=root, split='trainval', transform=transform, download=True)
+    aircraft_test_dataset = torchvision.datasets.FGVCAircraft(root=root, split='test', transform=transform, download=True)
+
+    class_indices = {airc_label: [np.where(np.array(aircraft_train_dataset._labels)==airc_label)[0]] for airc_label in range(100)}
+    shuffled_sampled_class_indices = {airc_label: [random_state.choice(class_indices[airc_label][0],int(n/100),replace=False)] for airc_label in class_indices.keys()}
+
+    if tune:
+        if n == 100:
+            mask = random_state.choice([True]*80 + [False]*20, 100, replace=False)
+            train_indices = np.array(list(shuffled_sampled_class_indices.values())).flatten()[mask]
+            val_or_test_indices = np.array(list(shuffled_sampled_class_indices.values())).flatten()[~mask]
+        else:
+            train_indices = {airc_label: shuffled_sampled_class_indices[airc_label][0][:int(4/5*int(n/100))] for airc_label in shuffled_sampled_class_indices.keys()}
+            val_or_test_indices = {airc_label: shuffled_sampled_class_indices[airc_label][0][int(4/5*int(n/100)):] for airc_label in shuffled_sampled_class_indices.keys()}
+            train_indices = np.array(list(train_indices.values())).flatten()
+            val_or_test_indices = np.array(list(val_or_test_indices.values())).flatten()
+    else:
+        train_indices = np.array(list(shuffled_sampled_class_indices.values())).flatten()
+
+    # For Aircrafts we resize images before normalizing since images are different sizes
+    resize = torchvision.transforms.Resize(size=(256, 256))
+    sampled_train_images = torch.stack([resize(torchvision.io.read_image(str(aircraft_train_dataset._image_files[ind])).float())/255 for ind in train_indices])
+    sampled_train_labels = torch.tensor([aircraft_train_dataset._labels[ind] for ind in train_indices]).squeeze()
+
+    mean = torch.mean(sampled_train_images, axis=(0, 2, 3))
+    std = torch.std(sampled_train_images, axis=(0, 2, 3))
+    augmented_transform = torchvision.transforms.Compose([
+        torchvision.transforms.Normalize(mean=mean, std=std),
+        torchvision.transforms.RandomCrop(size=(224, 224)),
+        torchvision.transforms.RandomHorizontalFlip(),
+    ])
+    transform = torchvision.transforms.Compose([
+        torchvision.transforms.Normalize(mean=mean, std=std),
         torchvision.transforms.CenterCrop(size=(224, 224)),
     ])
 
-    # Create Oxford Pets datasets
-    augmented_train_dataset = CIFAR10(sampled_train_images, sampled_train_labels, train_transform)
-    train_dataset = CIFAR10(sampled_train_images, sampled_train_labels, val_or_test_transform)
-    val_or_test_dataset = CIFAR10(sampled_val_or_test_images, sampled_val_or_test_labels, val_or_test_transform)
-    return augmented_train_dataset, train_dataset, val_or_test_dataset
+    if tune:
+        sampled_val_or_test_images = torch.stack([resize(torchvision.io.read_image(str(aircraft_train_dataset._image_files[ind])).float())/255 for ind in val_or_test_indices])
+        sampled_val_or_test_labels = torch.tensor([aircraft_train_dataset._labels[ind] for ind in val_or_test_indices]).squeeze()
+    else:
+        sampled_val_or_test_images = torch.stack([resize(torchvision.io.read_image(str(path)).float())/255 for path in aircraft_test_dataset._image_files])
+        sampled_val_or_test_labels = torch.tensor([aircraft_test_dataset._labels]).squeeze()
 
+    augmented_train_dataset = Dataset(sampled_train_images, sampled_train_labels, augmented_transform)
+    train_dataset = Dataset(sampled_train_images, sampled_train_labels, transform)
+    val_or_test_dataset = Dataset(sampled_val_or_test_images, sampled_val_or_test_labels, transform)
+
+    return augmented_train_dataset, train_dataset, val_or_test_dataset
 
 def get_ham10000_datasets(root, n, tune=True, random_state=42):
     # Load HAM10000 datasets (see HAM10000.ipynb to create labels.csv)
@@ -103,132 +282,37 @@ def get_ham10000_datasets(root, n, tune=True, random_state=42):
     to_tensor = torchvision.transforms.Compose([
         torchvision.transforms.Lambda(lambda item: item/255),
     ])
-    sampled_train_images = torch.stack([to_tensor(read_image(path).float()) for path in train_df.path])
+    sampled_train_images = torch.stack([to_tensor(torchvision.io.read_image(path).float()) for path in train_df.path])
     train_mean = torch.mean(sampled_train_images, axis=(0, 2, 3))
     train_std = torch.std(sampled_train_images, axis=(0, 2, 3))
-    train_transform = torchvision.transforms.Compose([
+    augmented_transform = torchvision.transforms.Compose([
         torchvision.transforms.Normalize(mean=train_mean, std=train_std),
         torchvision.transforms.Resize(size=(256, 256)),
         torchvision.transforms.RandomCrop(size=(224, 224)),
         torchvision.transforms.RandomHorizontalFlip(),
     ])
-    val_or_test_transform = torchvision.transforms.Compose([
+    transform = torchvision.transforms.Compose([
         torchvision.transforms.Normalize(mean=train_mean, std=train_std),
         torchvision.transforms.Resize(size=(256, 256)),
         torchvision.transforms.CenterCrop(size=(224, 224)),
     ])
-    sampled_train_images = torch.stack([to_tensor(read_image(path).float()) for path in train_df.path])
+    sampled_train_images = torch.stack([to_tensor(torchvision.io.read_image(path).float()) for path in train_df.path])
     sampled_train_labels = torch.tensor([label for label in train_df.label]).squeeze()
-    sampled_val_or_test_images = torch.stack([to_tensor(read_image(path).float()) for path in val_or_test_df.path])
+    sampled_val_or_test_images = torch.stack([to_tensor(torchvision.io.read_image(path).float()) for path in val_or_test_df.path])
     sampled_val_or_test_labels = torch.tensor([label for label in val_or_test_df.label]).squeeze()
     # Create HAM10000 datasets
-    augmented_train_dataset = CIFAR10(sampled_train_images, sampled_train_labels, train_transform)
-    train_dataset = CIFAR10(sampled_train_images, sampled_train_labels, val_or_test_transform)
-    val_or_test_dataset = CIFAR10(sampled_val_or_test_images, sampled_val_or_test_labels, val_or_test_transform)
+    augmented_train_dataset = Dataset(sampled_train_images, sampled_train_labels, augmented_transform)
+    train_dataset = Dataset(sampled_train_images, sampled_train_labels, transform)
+    val_or_test_dataset = Dataset(sampled_val_or_test_images, sampled_val_or_test_labels, transform)
     return augmented_train_dataset, train_dataset, val_or_test_dataset
-
-class CIFAR10(torch.utils.data.Dataset):
-
-    def __init__(self, X, y, transform=None):
-        self.X = X
-        self.y = y
-        self.transform = transform
-
-    def __len__(self):
-        return len(self.X)
-
-    def __getitem__(self, index):
-        return (self.transform(self.X[index]), self.y[index]) if self.transform else (self.X[index], self.y[index])
-
-def get_cifar10_datasets(root, n, tune=True, random_state=42):
-    
-    if random_state is None:
-        random_state = np.random
-    elif isinstance(random_state, int):
-        random_state = np.random.RandomState(int(random_state))
-    if not hasattr(random_state, 'rand'):
-        raise ValueError('Not a valid random number generator')
         
-    assert n in [10, 100, 1000, 10000, 50000], f'Invalid number of samples n={n}.'
-    # Load CIFAR-10 datasets
-    cifar10_train_dataset = torchvision.datasets.CIFAR10(root=root, train=True, download=True)
-    cifar10_test_dataset = torchvision.datasets.CIFAR10(root=root, train=False, download=True)
-    # Dictionary of labels and indices
-    class_indices = {cifar10_label: [idx for idx, (image, label) in enumerate(cifar10_train_dataset) if label == cifar10_label] for cifar10_label in range(10)}
-    shuffled_sampled_class_indices = {cifar10_label: random_state.choice(class_indices[cifar10_label], int(n/10), replace=False) for cifar10_label in class_indices.keys()}
-    if tune:
-        if n == 10:
-            mask = random_state.choice(np.tile([True, True, True, True, False], reps=int(n/5))[:n], n, replace=False)
-            train_indices = np.array(list(shuffled_sampled_class_indices.values())).flatten()[mask]
-            val_or_test_indices = np.array(list(shuffled_sampled_class_indices.values())).flatten()[~mask]
-        else:
-            train_indices = {cifar10_label: shuffled_sampled_class_indices[cifar10_label][:int(4/50*n)] for cifar10_label in shuffled_sampled_class_indices.keys()}
-            val_or_test_indices = {cifar10_label: shuffled_sampled_class_indices[cifar10_label][int(4/50*n):] for cifar10_label in shuffled_sampled_class_indices.keys()}
-            train_indices = np.array(list(train_indices.values())).flatten()
-            val_or_test_indices = np.array(list(val_or_test_indices.values())).flatten()
-        val_or_test_dataset = [cifar10_train_dataset[index] for index in val_or_test_indices]
-    else:
-        train_indices = np.array(list(shuffled_sampled_class_indices.values())).flatten()
-        val_or_test_dataset = cifar10_test_dataset
-    # Get channel mean and std from training data
-    sampled_train_dataset = [cifar10_train_dataset[index] for index in train_indices]
-    to_tensor = torchvision.transforms.Compose([
-        torchvision.transforms.ToTensor()
-    ])
-    sampled_train_images = torch.stack([to_tensor(image) for image, label in sampled_train_dataset])
-    train_mean = torch.mean(sampled_train_images, axis=(0, 2, 3))
-    train_std = torch.std(sampled_train_images, axis=(0, 2, 3))
-    train_transform = torchvision.transforms.Compose([
-        torchvision.transforms.Normalize(mean=train_mean, std=train_std),
-        torchvision.transforms.Resize(size=(256, 256)),
-        torchvision.transforms.RandomCrop(size=(224, 224)),
-        torchvision.transforms.RandomHorizontalFlip(),
-    ])
-    val_or_test_transform = torchvision.transforms.Compose([
-        torchvision.transforms.Normalize(mean=train_mean, std=train_std),
-        torchvision.transforms.Resize(size=(256, 256)),
-        torchvision.transforms.CenterCrop(size=(224, 224)),
-    ])
-    # Load X and y for each dataset
-    sampled_train_images = torch.stack([to_tensor(image) for image, label in sampled_train_dataset])
-    sampled_train_labels = torch.tensor([label for image, label in sampled_train_dataset])
-    sampled_val_or_test_images = torch.stack([to_tensor(image) for image, label in val_or_test_dataset])
-    sampled_val_or_test_labels = torch.tensor([label for image, label in val_or_test_dataset])
-    # Create CIFAR10 datasets
-    augmented_train_dataset = CIFAR10(sampled_train_images, sampled_train_labels, train_transform)
-    train_dataset = CIFAR10(sampled_train_images, sampled_train_labels, val_or_test_transform)
-    val_or_test_dataset = CIFAR10(sampled_val_or_test_images, sampled_val_or_test_labels, val_or_test_transform)
-    return augmented_train_dataset, train_dataset, val_or_test_dataset
+def flatten_params(model):
+    return torch.cat([param.view(-1) for param in model.parameters()])
 
-def train_one_epoch(model, criterion, optimizer, scheduler, dataloader):
-    
+def train_one_epoch(model, criterion, optimizer, dataloader, lr_scheduler=None, metric='accuracy', num_classes=10):
+
     device = torch.device('cuda:0' if next(model.parameters()).is_cuda else 'cpu')
     model.train()
-    
-    lrs = []
-    
-    for batch_idx, (inputs, targets) in enumerate(dataloader):
-        
-        if device.type == 'cuda':
-            inputs, targets = inputs.to(device), targets.to(device)
-
-        model.zero_grad()
-        outputs = model(inputs)
-        params = torch.flatten(torch.cat([torch.flatten(p) for p in model.parameters()]))
-        params = params[:criterion.number_of_params].cpu()        
-        metrices = criterion(outputs, targets, N=len(dataloader.dataset), params=params)
-        metrices['loss'].backward()
-        #torch.nn.utils.clip_grad_norm_(model.parameters(), 2.0)
-        optimizer.step()
-        lrs.append(scheduler.get_last_lr()[0])
-        scheduler.step()
-        
-    return lrs
-
-def evaluate(model, criterion, dataloader, metric='accuracy', num_classes=10):
-    
-    device = torch.device('cuda:0' if next(model.parameters()).is_cuda else 'cpu')
-    model.eval()    
 
     if metric == 'accuracy':
         acc = torchmetrics.Accuracy(task='multiclass', num_classes=num_classes, average='macro')
@@ -237,34 +321,85 @@ def evaluate(model, criterion, dataloader, metric='accuracy', num_classes=10):
     else:
         raise NotImplementedError(f'The specified metric \'{metric}\' is not implemented.')
     
-    outputs_list, targets_list = [], []
-    running_loss, running_nll, running_prior = 0.0, 0.0, 0.0
-    
-    params = torch.flatten(torch.cat([torch.flatten(p) for p in model.parameters()]))
-    params = params[:criterion.number_of_params].cpu()
-    
-    with torch.no_grad():
-        for batch_idx, (inputs, targets) in enumerate(dataloader):
-            
-            if device.type == 'cuda':
-                inputs, targets = inputs.to(device), targets.to(device)
-                
-            outputs = model(inputs)
-            metrices = criterion(outputs, targets, N=len(dataloader.dataset), params=params)
-            
-            running_loss += len(inputs)/len(dataloader.dataset)*metrices['loss'].item()
-            running_nll += len(inputs)/len(dataloader.dataset)*metrices['nll'].item()
-            running_prior += len(inputs)/len(dataloader.dataset)*metrices['prior'].item()
-            
-            if device.type == 'cuda':
-                outputs, targets = outputs.cpu(), targets.cpu()
-            
-            for output, target in zip(outputs, targets):
-                outputs_list.append(output)
-                targets_list.append(target)
-            
-        outputs = torch.stack(outputs_list)
-        targets = torch.stack(targets_list)
-        running_acc = acc(torch.softmax(outputs, dim=1), targets).item()
+    dataset_size = len(dataloader) * dataloader.batch_size if dataloader.drop_last else len(dataloader.dataset)
+    metrics = {'acc1': 0.0, 'bb_log_prior': 0.0, 'clf_log_prior': 0.0, 'labels': [], 'loss': 0.0, 'nll': 0.0, 'probabilities': []}
 
-    return running_loss, running_nll, running_prior, running_acc
+    for images, labels in dataloader:
+                        
+        if device.type == 'cuda':
+            images, labels = images.to(device), labels.to(device)
+
+        model.zero_grad()
+        logits = model(images)
+        params = flatten_params(model)
+        losses = criterion(logits, labels, params[:criterion.d], params[criterion.d:])
+        losses['loss'].backward()
+        optimizer.step()
+
+        batch_size = len(images)
+        probabilities = torch.softmax(logits, dim=1)
+        metrics['bb_log_prior'] += batch_size/dataset_size*losses['bb_log_prior'].item()
+        metrics['clf_log_prior'] += batch_size/dataset_size*losses['clf_log_prior'].item()
+        metrics['loss'] += batch_size/dataset_size*losses['loss'].item()
+        metrics['nll'] += batch_size/dataset_size*losses['nll'].item()
+        
+        if lr_scheduler:
+            lr_scheduler.step()
+
+        if device.type == 'cuda':
+            labels, probabilities = labels.cpu(), probabilities.cpu()
+        
+        for label, probability in zip(labels, probabilities):
+            metrics['labels'].append(label)
+            metrics['probabilities'].append(probability)
+
+    labels = torch.stack(metrics['labels'])
+    probabilities = torch.stack(metrics['probabilities'])
+    metrics['acc1'] = acc(probabilities, labels).item()
+            
+    return metrics
+
+def evaluate(model, criterion, dataloader, metric='accuracy', num_classes=10):
+    
+    device = torch.device('cuda:0' if next(model.parameters()).is_cuda else 'cpu')
+    model.eval()   
+    
+    if metric == 'accuracy':
+        acc = torchmetrics.Accuracy(task='multiclass', num_classes=num_classes, average='macro')
+    elif metric == 'auroc':
+        acc = torchmetrics.AUROC(task='multiclass', num_classes=num_classes, average='macro')
+    else:
+        raise NotImplementedError(f'The specified metric \'{metric}\' is not implemented.')
+
+    dataset_size = len(dataloader) * dataloader.batch_size if dataloader.drop_last else len(dataloader.dataset)
+    metrics = {'acc1': 0.0, 'bb_log_prior': 0.0, 'clf_log_prior': 0.0, 'labels': [], 'loss': 0.0, 'nll': 0.0, 'probabilities': []}
+            
+    with torch.no_grad():
+        for images, labels in dataloader:
+                        
+            if device.type == 'cuda':
+                images, labels = images.to(device), labels.to(device)
+                
+            logits = model(images)
+            params = flatten_params(model)
+            losses = criterion(logits, labels, params[:criterion.d], params[criterion.d:])
+            
+            batch_size = len(images)
+            probabilities = torch.softmax(logits, dim=1)
+            metrics['bb_log_prior'] += batch_size/dataset_size*losses['bb_log_prior'].item()
+            metrics['clf_log_prior'] += batch_size/dataset_size*losses['clf_log_prior'].item()
+            metrics['loss'] += batch_size/dataset_size*losses['loss'].item()
+            metrics['nll'] += batch_size/dataset_size*losses['nll'].item()
+
+            if device.type == 'cuda':
+                labels, probabilities = labels.cpu(), probabilities.cpu()
+            
+            for label, probability in zip(labels, probabilities):
+                metrics['labels'].append(label)
+                metrics['probabilities'].append(probability)
+
+        labels = torch.stack(metrics['labels'])
+        probabilities = torch.stack(metrics['probabilities'])
+        metrics['acc1'] = acc(probabilities, labels).item()
+
+    return metrics

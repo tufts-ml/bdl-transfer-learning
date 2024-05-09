@@ -41,13 +41,9 @@ if __name__=='__main__':
     ]
 
     for std_prior_model_name, learned_prior_lr_model_name in zip(std_prior_model_names, learned_prior_lr_model_names):
-
         std_prior_checkpoint = torch.load(f'{experiments_path}/{std_prior_model_name}.pt', map_location=torch.device('cpu'))
-        prior_path = '/cluster/tufts/hugheslab/eharve06/resnet50_ssl_prior'
-        pretrained_checkpoint = torch.load(f'{prior_path}/resnet50_ssl_prior_model.pt', map_location=torch.device('cpu'))
-        pretrained_checkpoint['fc.weight'] = std_prior_checkpoint['fc.weight']
-        pretrained_checkpoint['fc.bias'] = std_prior_checkpoint['fc.bias']
-        interpolations = interpolate_checkpoints(pretrained_checkpoint, std_prior_checkpoint)
+        learned_prior_lr_checkpoint = torch.load(f'{experiments_path}/{learned_prior_lr_model_name}.pt', map_location=torch.device('cpu'))
+        interpolations = interpolate_checkpoints(std_prior_checkpoint, learned_prior_lr_checkpoint)
 
         # StdPrior
         pattern = re.compile(r'(\w+)_lr_0=([\d.]+)_n=(\d+)_random_state=(\d+)_weight_decay=([\d.]+(?:e[-+]?\d+)?)')
@@ -55,7 +51,7 @@ if __name__=='__main__':
         prior_type, lr_0, n, random_state, weight_decay = match.groups()
         lr_0, n, random_state, weight_decay = float(lr_0), int(n), int(random_state), float(weight_decay)
 
-        augmented_train_dataset, train_dataset, val_or_test_dataset = utils.get_cifar10_datasets(root=dataset_path, n=int(n), tune=False, random_state=int(random_state))
+        augmented_train_dataset, train_dataset, val_or_test_dataset = utils.get_cifar10_datasets(root=dataset_path, n=n, tune=False, random_state=random_state)
         # PyTorch DataLoaders
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=128)
         val_or_test_loader = torch.utils.data.DataLoader(val_or_test_dataset, batch_size=128)
@@ -86,15 +82,8 @@ if __name__=='__main__':
 
         train_losses = torch.tensor(train_losses)
         val_or_test_nlls = torch.tensor(val_or_test_nlls)
-        torch.save(train_losses, f'./nonlearned_train_basin_random_state={random_state}.pt')
-        torch.save(val_or_test_nlls, f'./nonlearned_test_basin_random_state={random_state}.pt')
-
-        learned_prior_lr_checkpoint = torch.load(f'{experiments_path}/{learned_prior_lr_model_name}.pt', map_location=torch.device('cpu'))
-        prior_path = '/cluster/tufts/hugheslab/eharve06/resnet50_ssl_prior'
-        pretrained_checkpoint = torch.load(f'{prior_path}/resnet50_ssl_prior_model.pt', map_location=torch.device('cpu'))
-        pretrained_checkpoint['fc.weight'] = learned_prior_lr_checkpoint['fc.weight']
-        pretrained_checkpoint['fc.bias'] = learned_prior_lr_checkpoint['fc.bias']
-        interpolations = interpolate_checkpoints(pretrained_checkpoint, learned_prior_lr_checkpoint)
+        torch.save(train_losses, f'./nonlearned_train_old_interpolation_random_state={random_state}.pt')
+        torch.save(val_or_test_nlls, f'./nonlearned_test_old_interpolation_random_state={random_state}.pt')
 
         # LearnedPriorLR
         pattern = re.compile(r'(\w+)_bb_weight_decay=([\d.]+)_clf_weight_decay=([\d.]+(?:e[-+]?\d+)?)_lr_0=([\d.]+)_n=(\d+)_random_state=(\d+)')
@@ -139,5 +128,5 @@ if __name__=='__main__':
 
         train_losses = torch.tensor(train_losses)
         val_or_test_nlls = torch.tensor(val_or_test_nlls)
-        torch.save(train_losses, f'./learned_train_basin_random_state={random_state}.pt')
-        torch.save(val_or_test_nlls, f'./learned_test_basin_random_state={random_state}.pt')
+        torch.save(train_losses, f'./learned_train_old_interpolation_random_state={random_state}.pt')
+        torch.save(val_or_test_nlls, f'./learned_test_old_interpolation_random_state={random_state}.pt')
