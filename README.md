@@ -12,5 +12,6 @@ See `bdl-transfer-learning.yml`.
 Shwartz-Ziv et al. (2022)'s pre-trained prior can be found at https://github.com/hsouri/BayesianTransferLearning. In our paper, we use `resnet50_ssl_prior`.
 
 ## Downloading our experiments
+Our experiments can be found at https://tufts.box.com/v/bdl-transfer-learning.
 
 ## Citation
