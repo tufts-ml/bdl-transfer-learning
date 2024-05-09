@@ -12,6 +12,6 @@ See `bdl-transfer-learning.yml`.
 Shwartz-Ziv et al. (2022)’s SimCLR snapshots can be found at https://github.com/hsouri/BayesianTransferLearning
 
 ## Downloading our experiments
-Our experiments can be found at https://tufts.box.com/v/bdl-transfer-learning.
+A zip file of all our experiments can be found at https://tufts.box.com/v/bdl-transfer-learning.
 
 ## Citation
