@@ -11,4 +11,7 @@ See `bdl-transfer-learning.yml`.
 ## Downloading Shwartz-Ziv et al. (2022)'s SimCLR Resnet-50 prior/initialization
 Shwartz-Ziv et al. (2022)'s pre-trained prior can be found at https://github.com/hsouri/BayesianTransferLearning. In our paper, we use `resnet50_ssl_prior`.
 
+## Downloading our experiments
+
+
 ## Citation
