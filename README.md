@@ -8,7 +8,7 @@ Figure 1: Error rate (lower is better) vs. target train set size on CIFAR-10, fo
 ## Installing Enviroment
 See `bdl-transfer-learning.yml`.
 
-## Downloading Shwartz-Ziv et al. (2022)'s SimCLR ResNet-50 prior/initialization
+## Downloading Shwartz-Ziv et al. (2022)'s Pre-trained Priors
 Shwartz-Ziv et al. (2022)’s SimCLR snapshots can be found at https://github.com/hsouri/BayesianTransferLearning
 
 ## Downloading our experiments
