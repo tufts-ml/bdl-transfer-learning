@@ -1,4 +1,4 @@
-## Example `main.py`
+## Example `main.py` Arguments
 
 ```
 usage: main.py [-h] [--batch_size BATCH_SIZE] [--bb_weight_decay BB_WEIGHT_DECAY]
