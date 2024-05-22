@@ -1,9 +1,16 @@
 ## Example `main.py` Arguments
 
 ```
-usage: main_CIFAR-10.py [-h] [--batch_size BATCH_SIZE] [--bb_weight_decay BB_WEIGHT_DECAY] [--clf_weight_decay CLF_WEIGHT_DECAY] [--dataset_path DATASET_PATH] [--experiments_path EXPERIMENTS_PATH] [--k K]
-                        [--lr_0 LR_0] [--model_name MODEL_NAME] [--n N] [--num_workers NUM_WORKERS] [--prior_eps PRIOR_EPS] [--prior_path PRIOR_PATH] [--prior_type PRIOR_TYPE] [--save] [--tune]
-                        [--random_state RANDOM_STATE] [--wandb] [--wandb_project WANDB_PROJECT]
+usage: main_CIFAR-10.py [-h] [--batch_size BATCH_SIZE]
+                        [--bb_weight_decay BB_WEIGHT_DECAY]
+                        [--clf_weight_decay CLF_WEIGHT_DECAY]
+                        [--dataset_path DATASET_PATH]
+                        [--experiments_path EXPERIMENTS_PATH] [--k K]
+                        [--lr_0 LR_0] [--model_name MODEL_NAME] [--n N]
+                        [--num_workers NUM_WORKERS] [--prior_eps PRIOR_EPS]
+                        [--prior_path PRIOR_PATH] [--prior_type PRIOR_TYPE]
+                        [--save] [--tune] [--random_state RANDOM_STATE]
+                        [--wandb] [--wandb_project WANDB_PROJECT]
 
 main.py
 
@@ -33,7 +40,8 @@ options:
   --prior_type PRIOR_TYPE
                         Determines criterion
   --save                Whether or not to save the model (default: False)
-  --tune                Whether validation or test set is used (default: False)
+  --tune                Whether validation or test set is used (default:
+                        False)
   --random_state RANDOM_STATE
                         Random state (default: 42)
   --wandb               Whether or not to log to wandb
