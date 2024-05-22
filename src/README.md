@@ -38,13 +38,13 @@ options:
   --prior_path PRIOR_PATH
                         Path to saved priors (default: '')
   --prior_type PRIOR_TYPE
-                        Determines criterion
+                        Determines criterion (default: 'StdPrior')
   --save                Whether or not to save the model (default: False)
   --tune                Whether validation or test set is used (default:
                         False)
   --random_state RANDOM_STATE
                         Random state (default: 42)
-  --wandb               Whether or not to log to wandb
+  --wandb               Whether or not to log to wandb (default: False)
   --wandb_project WANDB_PROJECT
                         Wandb project name (default: 'test')
 ```
