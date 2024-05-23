@@ -16,14 +16,13 @@ A zip file of all our experiments can be found at https://tufts.box.com/v/bdl-tr
 
 ## Citation
 ```bibtex
-@article{
-harvey2024transfer,
-title={Transfer Learning with Informative Priors: Simple Baselines Better than Previously Reported},
-author={Ethan Harvey and Mikhail Petrov and Michael C. Hughes},
-journal={Transactions on Machine Learning Research},
-issn={XXXX-XXXX},
-year={2024},
-url={https://openreview.net/pdf?id=BbvSU02jLg},
-note={}
+@article{harvey2024transfer,
+  title={Transfer Learning with Informative Priors: Simple Baselines Better than Previously Reported},
+  author={Ethan Harvey and Mikhail Petrov and Michael C. Hughes},
+  journal={Transactions on Machine Learning Research},
+  issn={XXXX-XXXX},
+  year={2024},
+  url={https://openreview.net/pdf?id=BbvSU02jLg},
+  note={}
 }
 ```
