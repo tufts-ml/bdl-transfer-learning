@@ -10,7 +10,6 @@ def create_folds(df, index_name='subject_id', random_state=42):
     if not hasattr(random_state, 'rand'):
         raise ValueError('Not a valid random number generator')
         
-    # Create DataFrame with the most frequent label for each unique subject_id
     df.index.name = index_name
     grouped = df.groupby(index_name)['label'].agg(lambda x: x.value_counts().idxmax()).reset_index()
 
