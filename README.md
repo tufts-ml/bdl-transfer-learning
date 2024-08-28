@@ -1,5 +1,4 @@
 # bdl-transfer-learning
-
 [Transfer Learning with Informative Priors: Simple Baselines Better than Previously Reported](https://openreview.net/pdf?id=BbvSU02jLg) by Ethan Harvey*, Mikhail Petrov*, and Michael C. Hughes
 
 ![Figure 1](./notebooks/replication.png)
